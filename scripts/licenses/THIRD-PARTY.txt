@@ -1,0 +1,12 @@
+Third-party runtime notices
+
+Microsoft Entity Framework Core and Microsoft.Data.Sqlite packages 10.0.15,
+and Microsoft.Extensions.DependencyModel 10.0.15: MIT.
+Copyright Microsoft Corporation; see Microsoft.NET-MIT.txt for the .NET
+Foundation and Contributors license. The separate DependencyModel notices
+are copied from the restored NuGet package.
+
+SQLitePCLRaw.bundle_e_sqlite3, SQLitePCLRaw.core,
+SQLitePCLRaw.provider.e_sqlite3, and SQLitePCLRaw.lib.e_sqlite3 2.1.13:
+Apache-2.0. Copyright 2014-2024 SourceGear, LLC.
+See Apache-2.0.txt and SQLitePCLRaw-NOTICE.txt, including the SQLite notice.

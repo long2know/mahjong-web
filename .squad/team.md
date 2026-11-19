@@ -12,7 +12,21 @@
 
 | Name | Role | Charter | Status |
 |------|------|---------|--------|
+| Lead | Lead / Architect | `.squad/agents/lead/charter.md` | ✅ Active |
+| Rules | Game Developer | `.squad/agents/rules/charter.md` | ✅ Active |
+| Backend | Backend Developer | `.squad/agents/backend/charter.md` | ✅ Active |
+| Frontend | Frontend Developer | `.squad/agents/frontend/charter.md` | ✅ Active |
+| Infra | DevOps Engineer | `.squad/agents/infra/charter.md` | ✅ Active |
 
+
+## Built-in Support Agents
+
+| Name | Role | Charter | Status |
+|------|------|---------|--------|
+| Scribe | Decision Merger | `.squad/agents/scribe/charter.md` | 📋 Silent |
+| Ralph | Work Monitor | `.squad/agents/ralph/charter.md` | 🔄 Monitor |
+| Rai | RAI Reviewer | `.squad/agents/rai/charter.md` | 🛡️ RAI |
+| Fact Checker | Devil's Advocate & Verification Agent | `.squad/agents/fact-checker/charter.md` | 🔍 Verifier |
 
 ## Coding Agent
 
@@ -51,3 +65,6 @@
 
 - **Project:** mahjong-web
 - **Created:** 2026-11-19
+- **Requester:** Stephen Long
+- **Product:** Self-hosted, four-seat Changsha Mahjong for phones and desktop.
+- **Stack:** .NET 10, ASP.NET Core, EF Core/SQLite, and a TypeScript web client.

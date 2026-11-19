@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "transaction_id": "5c570672-b1a6-4a38-8d21-954dffa05090",
-  "registry_revision": 1,
-  "registry_sha256": "71e50431c7fa4e4e25dca1168da8d2b8b4c808c619fb2fabfbde60c1ce689fd8",
-  "history_sha256": "a21a06861ce0da465827d3cc03db48325a0d39a942856376391b45df2cdf65e7"
+  "transaction_id": "59a4eb5e-5af2-4b93-8be7-166b89db3c38",
+  "registry_revision": 6,
+  "registry_sha256": "fe11fa40e6e8025ca6ded130a73659c1f7177c13e155eef1e189e62f6b1d7fed",
+  "history_sha256": "5318e804d6c46db7b75aa97971021e23e7e4419ee2d8107b3230964a35425719"
 }

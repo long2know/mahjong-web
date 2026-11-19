@@ -1,0 +1,10 @@
+<Project>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'Mahjong.Server'">
+    <Content Include="$(MSBuildThisFileDirectory)LICENSE"
+             Link="LICENSE" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(MSBuildThisFileDirectory)scripts/licenses/*.txt"
+             Link="licenses/%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(NuGetPackageRoot)microsoft.extensions.dependencymodel/10.0.15/THIRD-PARTY-NOTICES.TXT"
+             Link="licenses/Microsoft.Extensions.DependencyModel-NOTICES.txt" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

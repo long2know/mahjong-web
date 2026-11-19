@@ -1,0 +1,26 @@
+name: mahjong-web
+services:
+  mahjong:
+    image: ${MAHJONG_IMAGE:-mahjong-web:local}
+    pull_policy: never
+    build:
+      context: .
+      args:
+        BUILD_VERSION: ${BUILD_VERSION:-0.1.0}
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+    environment:
+      Mahjong__AllowHttpLoopbackOrigin: ${Mahjong__AllowHttpLoopbackOrigin:-true}
+      Mahjong__PublicOrigin:
+      Mahjong__TrustedProxies__0:
+    ports:
+      - "127.0.0.1:${MAHJONG_PORT:-8080}:8080"
+    volumes:
+      - data:/data
+    restart: unless-stopped
+    stop_grace_period: 30s
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  data:

@@ -6,9 +6,11 @@ How to decide who handles what.
 
 | Work Type | Route To | Examples |
 |-----------|----------|----------|
-
-Preset installation adds concrete routes for the configured team. Add or edit rows
-here only when their agent names also exist in the casting registry.
+| Architecture and release evidence | Lead | Protocol, component boundaries, reference matrix, qualification |
+| Changsha rules and bots | Rules | Source reconciliation, legal transitions, scoring, deterministic fixtures |
+| Authoritative service and recovery | Backend | Rooms, realtime, admission, projections, SQLite, restart tests |
+| Browser product and mobile verification | Frontend | Lobby, table, overlays, touch geometry, live browser tests |
+| Self-hosting and CI | Infra | Runtime image, dependency locking, migration/backup operations, build checks |
 
 ## Issue Routing
 
@@ -33,3 +35,12 @@ here only when their agent names also exist in the casting registry.
 5. **"Team, ..." → fan-out.** Spawn all relevant agents in parallel as `mode: "background"`.
 6. **Anticipate downstream work.** If a feature is being built, spawn the tester to write test cases from requirements simultaneously.
 7. **Issue-labeled work** — when a `squad:{member}` label is applied to an issue, route to that member. The Lead handles all `squad` (base label) triage.
+
+## Work Type → Agent
+
+| Work Type | Primary | Secondary |
+|-----------|---------|----------|
+| Game Developer | Rules | — |
+| Backend Developer | Backend | — |
+| Frontend Developer | Frontend | — |
+| DevOps Engineer | Infra | — |
