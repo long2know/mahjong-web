@@ -110,8 +110,8 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; line-
 .sample-tiles .tile-target { width: clamp(36px, 6vw, 77px); height: clamp(55px, 8vw, 99px); }
 .sample-tiles .tile-target:nth-child(2) { transform: translateY(-17%); }
 .sample-tiles .tile-target:nth-child(3) { transform: translateY(-34%); }
-.hero-seal { position: absolute; right: 4%; top: 4%; color: #f4c482; opacity: .83; }
-.hero-seal .icon { width: 34px; height: 34px; }
+.sample-tiles .tile-back { border-color: #9ca780; color: #ffd393; }
+.sample-tiles .icon { width: 58%; height: auto; }
 .panel-heading { display: flex; align-items: start; justify-content: space-between; gap: 8px; margin-bottom: 11px; }
 .panel-heading h2 { font-size: clamp(1.62rem, 3vw, 2.19rem); margin-top: 4px; }
 .form { display: grid; gap: 13px; }
@@ -380,7 +380,6 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; line-
   .home { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .hero { display: block; min-height: 230px; }
   .hero-art { position: absolute; right: -24px; top: 1px; width: 165px; min-height: 120px; opacity: .76; }
-  .hero-seal { display: none; }
   .hero .detail { max-width: 31ch; }
   .hero h1 { max-width: 9ch; }
   .hero .field { max-width: 300px; }
@@ -406,6 +405,52 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; line-
   .play { grid-template-areas: "status status" "board board" "rack actions"; grid-template-columns: minmax(0, 1fr) minmax(225px, .43fr); }
   .turnbar { width: min(100%, 810px); justify-self: center; }
   .rack { align-self: start; }
+}
+
+@media (min-width: 1000px) and (min-height: 600px) {
+  .shell:has(.play) {
+    display: flex; flex-direction: column; width: min(100%, 2200px);
+    padding-inline: max(clamp(16px, 1.45vw, 34px), var(--safe-l)) max(clamp(16px, 1.45vw, 34px), var(--safe-r));
+  }
+  .shell:has(.play) > main { display: flex; flex-direction: column; flex: 1 0 auto; }
+  .play {
+    flex: 1 0 auto; gap: 10px;
+    grid-template: "status status" auto "board board" minmax(290px, 1fr) "rack actions" auto
+      / minmax(0, 1fr) clamp(225px, 23%, 360px);
+  }
+  .turnbar, .board-stage { width: 100%; }
+  .board-stage { --table-distance: clamp(1250px, 125vw, 2800px); height: auto; }
+  .board-plane {
+    /* Scale edge lanes and discards to the playable depth, not the monitor width. */
+    container-type: size; inset: 7% 5% 9%;
+  }
+  .wall span, .backs span {
+    width: clamp(11px, 4.2cqh, 25px); height: clamp(16px, 5.7cqh, 34px);
+  }
+  :is(.wall--far, .wall--near, .backs--far) span { width: clamp(17px, 2.45vw, 35px); }
+  .backs--left { left: 7.5%; }
+  .backs--right { left: 92.5%; }
+  .river {
+    --river-size: clamp(19px, 7.5cqh, 40px);
+    width: max-content;
+    grid-template-columns: repeat(var(--river-columns, 8), var(--river-size));
+  }
+  .river--near, .river--far { --river-columns: 12; }
+  .river--near { top: 80%; }
+  .river--far { top: 21%; }
+  .river--left { left: 24%; }
+  .river--right { left: 76%; }
+  .river .river-tile { width: 100%; }
+  .center-trigger .tile-target { width: clamp(15px, 4cqh, 25px); height: clamp(20px, 5.25cqh, 33px); }
+  .seat-label { padding: 4px 7px 4px 5px; max-width: min(155px, 11%); }
+  .seat-wind { width: 29px; height: 29px; }
+  .edge-melds, .edge-reveals { max-width: min(150px, 11vw); }
+  .edge-melds .tile-target, .edge-reveals .tile-target { width: 21px; height: 27px; }
+  .rack { padding: 5px 8px 7px; }
+  .hand-tile { width: clamp(44px, 4.25vw, 78px); height: clamp(57px, 5.3vw, 96px); }
+  .is-drawn { margin-inline-start: 10px; }
+  .table-actions { align-content: center; padding-inline: 10px; }
+  .choice-tiles .tile-target { width: 19px; height: 26px; }
 }
 
 @media (orientation: landscape) and (max-height: 520px) and (min-width: 630px) {

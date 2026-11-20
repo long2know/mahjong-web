@@ -235,18 +235,32 @@ function expectSystemMotion(page: Page, reduced: boolean): Promise<void> {
   return expect.poll(() => page.evaluate(query => matchMedia(query).matches, reducedMotionQuery)).toBe(reduced);
 }
 
-function settlementStartsMotion(page: Page): Promise<boolean> {
+const stillSettlement = { cue: "win", started: 0, visible: [] };
+const animatedSettlement = { cue: "win", started: 3, visible: ["+8", "Hu · Win", "−8"] };
+
+function settlementMotion(page: Page) {
   return page.evaluate(() => {
     const animate = Element.prototype.animate;
-    let started = false;
+    const started: { node: Element; animation: Animation }[] = [];
     Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
-      started ||= this.matches(".seat-feedback");
-      return animate.apply(this, args);
+      const animation = animate.apply(this, args);
+      if (this.matches(".table-effects > :is(.effect-stamp--win, .effect-score)")) {
+        started.push({ node: this, animation });
+      }
+      return animation;
     };
     try {
-      (window as FeedbackWindow).feedbackFixture.paint("settle");
-      return started || [...document.querySelectorAll(".seat-feedback")].some(badge =>
-        badge.getAnimations().some(animation => animation.playState !== "idle"));
+      const cue = (window as FeedbackWindow).feedbackFixture.paint("settle");
+      // Count new requests even if the reduced-motion CSS hides the overlay.
+      const visible = started.flatMap(({ node, animation }) => {
+        const art = node.querySelector(".effect-seal") ?? node;
+        const { width, height } = art.getBoundingClientRect();
+        const { opacity, visibility } = getComputedStyle(art);
+        return animation.playState === "running" && width > 0 && height > 0 && +opacity > 0 && visibility === "visible"
+          ? [art.textContent ?? ""]
+          : [];
+      }).sort();
+      return { cue, started: started.length, visible };
     } finally {
       Element.prototype.animate = animate;
     }
@@ -291,7 +305,7 @@ test("committed feedback follows the right river, calls and scores without repla
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expectSystemMotion(page, true);
-  expect(await settlementStartsMotion(page)).toBe(false);
+  expect(await settlementMotion(page)).toEqual(stillSettlement);
   await expect(caller.locator(".seat-feedback")).toHaveText("Hu · +8");
   await expect(page.locator('.seat-label[data-seat="0"] .seat-feedback')).toHaveText("−8");
   await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("base", false));
@@ -303,8 +317,9 @@ test("committed feedback follows the right river, calls and scores without repla
 test("settlement follows initial OS motion settings and changes to saved preferences", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(`${fixture}?feedback`);
+  await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("base", false));
   await expectSystemMotion(page, true);
-  expect(await settlementStartsMotion(page)).toBe(false);
+  expect(await settlementMotion(page)).toEqual(stillSettlement);
   await expect(page.locator('.seat-label[data-seat="2"] .seat-feedback')).toHaveText("Hu · +8");
 
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -314,7 +329,7 @@ test("settlement follows initial OS motion settings and changes to saved prefere
       document.documentElement.dataset.reducedMotion = String(reduced);
       (window as FeedbackWindow).feedbackFixture.paint("base", false);
     }, reduced);
-    expect(await settlementStartsMotion(page), `saved reduced motion: ${reduced}`).toBe(!reduced);
+    expect(await settlementMotion(page), `saved reduced motion: ${reduced}`).toEqual(reduced ? stillSettlement : animatedSettlement);
   }
 });
 

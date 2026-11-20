@@ -60,6 +60,7 @@ class LanternTable {
     },
     selected: () => this.audio.play("select"),
     results: () => this.openResults(),
+    motionStopped: () => this.finishResultReveal(),
     pause: () => {
       const room = this.bound();
       if (room) this.command({ op: "setPaused", payload: { ...room, paused: !this.session.snapshot?.room.paused } });
@@ -260,7 +261,8 @@ class LanternTable {
       if (!this.previous || this.previous.roomId !== state.roomId) this.chat.reset();
       this.chat.update(state.room.chat ?? [], state.self.seat, available);
       if (scene === "waiting") this.waiting.update(state, available);
-      else if (state.game) cue = this.table.update(state, available, this.session.now, effect);
+      // Remember the same-room waiting projection before the first live hand.
+      if (state.game || scene === "waiting") cue = this.table.update(state, available, this.session.now, effect);
     }
     if (cue) this.audio.play(cue);
     this.overlayActions.forEach(control => { control.disabled = !available; });
@@ -280,8 +282,7 @@ class LanternTable {
       }
       if (!key && this.modal.kind === "results") this.modal.close();
     } else if (this.resultReveal && (interrupted || !this.table.motionEnabled)) {
-      this.cancelResultReveal();
-      if (!this.modal.root.open) this.openResults();
+      this.finishResultReveal();
     }
     this.previous = state;
   }
@@ -289,6 +290,12 @@ class LanternTable {
   private cancelResultReveal(): void {
     clearTimeout(this.resultReveal);
     this.resultReveal = 0;
+  }
+
+  private finishResultReveal(): void {
+    if (!this.resultReveal) return;
+    this.cancelResultReveal();
+    if (!this.modal.root.open) this.openResults();
   }
 
   private modalClosed(): void {
