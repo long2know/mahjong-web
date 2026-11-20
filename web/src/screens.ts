@@ -84,9 +84,9 @@ export class HomeScreen {
       el("div", "hero-actions", this.resume, this.quick, this.create), this.intro);
     form.addEventListener("submit", event => { event.preventDefault(); hooks.quick(); });
 
-    const decoration = el("div", "hero-art",
-      el("div", "hero-seal", icon("lantern")),
-      el("div", "sample-tiles", tileLabel("c2"), tileLabel("b1"), tileLabel("d5")));
+    const tiles = el("div", "sample-tiles", ...[0, 1, 2].map(index =>
+      el("span", "tile-target", el("span", "tile-face tile-back", ...(index === 1 ? [icon("lantern")] : [])))));
+    const decoration = el("div", "hero-art", tiles);
     decoration.setAttribute("aria-hidden", "true");
     const hero = el("div", "panel hero", form, decoration);
 
