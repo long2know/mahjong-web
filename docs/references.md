@@ -122,3 +122,31 @@ Listed 2026-11-19. Only the four video entries have playback observations here. 
 26. <https://mahjong.long2know.com/autotable/>
 27. <https://games.long2know.com/mahjong>
 28. <https://games.long2know.com/mahjong/>
+
+## Supplemental supplied URLs (2026-11-20 UTC)
+
+- B4, new supporting reference: <https://www.bilibili.com/en/video/BV19bPXeBExV>
+- B3, alternate URL for the **same video**, not independent evidence: <https://www.bilibili.com/en/video/BV1DYF5e2EJT>
+
+B1, B2 and B3 remain co-primary. Both exact forms opened in parallel at `04:07:51.083Z`–`04:07:51.085Z` in fresh logged-out Chromium contexts. Both redirected to the same ID with a trailing slash and returned HTTP 200. An early Play click timed out on both (`TimeoutError: locator.click: Timeout 750ms exceeded.`), but 1× playback started without it. The player set its initial position to `00:05.089`; the “30-second preview” banner was not a hard cutoff in either run.
+
+| Clip | Final URL / duration | Confirmed 1× playback and missing coverage |
+|---|---|---|
+| B4 | `https://www.bilibili.com/en/video/BV19bPXeBExV/` (`04:07:52.803Z`); initial player duration 32 s, final media duration **31.699 s** | First decoded at `00:05.100`, natural `ended` at `00:31.699` (`04:08:20.645Z`), still on B4. No login cutoff or media error. `[00:00.000, 00:05.100)` remains unverified: the visible rewind control briefly showed `00:00.040` without ready frames at `04:10:46.919Z`, then the player returned to `00:05.108` before a new frame could be inspected. |
+| B3 | `https://www.bilibili.com/en/video/BV1DYF5e2EJT/` (`04:07:52.756Z`; exact repeat `04:10:44.046Z`); **218 s** (`video.duration`) | Exact-form repeat decoded from `00:05.089` to `01:07.047`, when playback paused under **Scan QR Code to Login** (`04:11:47.526Z`). The ordinary `/video/BV1DYF5e2EJT/` fallback returned HTTP 200 (`04:10:43.695Z`), later landed on the same `/en/` page and played `00:05.092–01:06.247` before the same dialog (`04:11:49.873Z`). No public continue control found or media error reported. Missing continuous intervals on the exact-form run: `[00:00.000, 00:05.089)` and `[01:07.047, 03:38.000)`. **No material change** from the earlier B3 cutoff; the previous late stills do not fill the tail. |
+
+B4's Bilibili page date is 2025-02-03. It labels the clip a WeChat Happy Mahjong mini-game, tags “Blood Battle to the End” and “Change three,” and describes three consecutive shots. This is medium-confidence variant metadata, not verification of the calls or Changsha rules. B3's `红中血流` label was visible again; this confirms its identification, not an additional variant example.
+
+### Supplemental visual observations and candidate treatment
+
+B4's 17 inspected stills (media seconds) were `5.100, 5.241, 6.835, 8.260, 10.044, 12.588, 14.056, 15.098, 18.051, 21.578, 22.098, 25.059, 27.060, 28.526, 29.030, 30.064, 30.992`. The clip was already mid-hand at the first inspected frame; the final frame sample was an outro, not a results screen. The gaps between stills are not visual coverage.
+
+| B4 sample bounds | Direct visual evidence | Comparison / candidate only |
+|---|---|---|
+| `00:05.100–00:06.835` | Tilted teal table, four closely packed discard rows around a small central timer, end-on tile runs at the edges, and separated face-up groups beside the bottom rack. | Reinforces B1–B3's fixed viewpoint and separation of rack, groups and rivers. Candidate: check dense-river legibility without reducing local tile targets. |
+| `00:08.260–00:12.588`, `00:25.059–00:27.060` | Two gold rings appear in one still, then separate far/right `胡` marks. Later a left gold ring and then a left `胡` mark appear while the earlier marks remain. | B3 shows transient win effects; B4 also shows persistent seat-local marks with the table still visible. Candidate: distinct, restrained feedback for authoritative seat events. These stills do not show whether wins shared a discard or establish scoring order. |
+| `00:14.056–00:22.098`, `00:27.060–00:30.992` | A marked offset tile and a brief white tile-info panel; later the table cuts to a black, red-heart end card by `00:28.526`. No final in-game scoreboard in the samples. | Like B3's earlier outro still, the end card is video content. Candidate: keep any optional tile info separate from the rack; neither the card nor the panel's game data is a requirement. |
+
+B3's repeat stills corroborated exchange/pass (`00:05.089–00:06.609`), the three suit circles (`00:10.033`), a tile-info panel (`00:25.019`), marked discards (`00:38.005`, `01:00.081–01:04.084`) and seat-local `−800`/`+800` feedback (`00:53.036`). Nothing from this form changes the previous treatment or the client.
+
+Both clips produced nonzero audio-decoder counts, but no sound was listened to or classified. To close the evidence gaps, provide an authorized B3 recording or playable link with sound covering the opening and uninterrupted `01:07.047–03:38.000` tail, and an authorized B4 recording/link with sound that includes the skipped opening. Full files are preferable for timing and audio comparisons.
