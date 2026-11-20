@@ -1,4 +1,5 @@
 import { button, el, places, reconcile, text, wind } from "./dom";
+import { center, seatSpot, TableEffects } from "./effects";
 import type { Game, GameSeat, Meld, Option, OptionKind, RoomSeat, Seat, Snapshot, Tile } from "./protocol";
 import { faceName, tileFace, tileLabel } from "./tile";
 
@@ -139,6 +140,7 @@ export interface TableHooks {
   selected: () => void;
   results: () => void;
   pause: () => void;
+  motionStopped?: () => void;
 }
 
 export class TableView {
@@ -161,7 +163,8 @@ export class TableView {
   private readonly resultButton: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
   private readonly reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
-  private readonly animations = new Set<Animation>();
+  private readonly effects = new TableEffects();
+  private needsVisibleBaseline = false;
   private state: Snapshot | null = null;
   private canAct = false;
   private selection: string | null = null;
@@ -197,9 +200,20 @@ export class TableView {
     this.melds.setAttribute("aria-label", "Your melds");
     const actions = el("div", "table-actions", this.hint, this.choices, this.discard, this.resultButton);
     this.hint.setAttribute("aria-live", "polite");
-    this.root.append(status, this.stage, rack, actions);
-    this.reduceMotion.addEventListener("change", () => { if (!this.motionEnabled) this.stopMotion(); });
-    document.addEventListener("visibilitychange", () => { if (document.hidden) this.stopMotion(); });
+    this.root.append(status, this.stage, rack, actions, this.effects.root);
+    const stopIfStill = () => {
+      if (this.motionEnabled) return;
+      this.effects.clear();
+      this.hooks.motionStopped?.();
+    };
+    this.reduceMotion.addEventListener("change", stopIfStill);
+    new MutationObserver(stopIfStill).observe(document.documentElement, {
+      attributes: true, attributeFilter: ["data-reduced-motion"],
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) this.needsVisibleBaseline = true;
+      stopIfStill();
+    });
     rack.addEventListener("keydown", event => {
       if (event.key === "Escape" && this.selection) {
         this.selection = null;
@@ -233,35 +247,42 @@ export class TableView {
     return !document.hidden && !this.reduceMotion.matches && document.documentElement.dataset.reducedMotion !== "true";
   }
 
-  private animate(node: Element | null | undefined, entry: string, duration: number): void {
-    if (!node) return;
-    const motion = node.animate([{ opacity: .42, transform: entry }, { opacity: 1, transform: "none" }],
-      { duration, easing: "cubic-bezier(.2,.72,.24,1)" });
-    this.animations.add(motion);
-    const forget = () => this.animations.delete(motion);
-    void motion.finished.then(forget, forget);
-  }
-
-  private stopMotion(): void {
-    this.animations.forEach(motion => motion.cancel());
-    this.animations.clear();
-  }
-
   update(state: Snapshot, canAct: boolean, now: number, effect = false): TableCue | undefined {
     const game = state.game;
-    if (!game) return;
     const previous = this.state;
-    const changed = previous?.roomId !== state.roomId || previous.gameRevision !== state.gameRevision;
-    const live = effect && changed && !state.room.paused && !document.hidden;
-    const motion = live && this.motionEnabled;
-    const priorGame = live && previous?.roomId === state.roomId &&
-      previous.gameRevision + 1 === state.gameRevision && previous.game?.handNumber === game.handNumber ? previous.game : null;
-    const newSettlement = live && !!game.settlement && !priorGame?.settlement;
-    if (changed || state.room.paused || !this.motionEnabled) this.stopMotion();
-    if (previous?.roomId !== state.roomId || previous?.game?.window?.windowId !== game.window?.windowId) this.selection = null;
     this.state = state;
-    this.canAct = canAct;
     const { self, room } = state;
+    const sameTable = previous?.roomId === state.roomId && previous.self.seat === self.seat;
+    const changed = !sameTable || previous.gameRevision !== state.gameRevision;
+    const live = sameTable && effect && previous.gameRevision + 1 === state.gameRevision &&
+      !previous.room.paused && !room.paused && !document.hidden && !this.needsVisibleBaseline;
+    // A snapshot delivered after the browser was suspended might be a queued commit.
+    if (changed) this.needsVisibleBaseline = false;
+    if (changed || room.paused || !this.motionEnabled) this.effects.clear();
+    if (!game) return;
+    const motion = live && this.motionEnabled;
+    const priorGame = live && previous.game?.handNumber === game.handNumber ? previous.game : null;
+    const deal = motion && room.status === "playing" && !game.settlement && (
+      previous.room.status === "waiting" && !previous.game && game.handNumber === 1 ||
+      previous.room.status === "betweenHands" && previous.game?.settlement &&
+        game.handNumber === previous.game.handNumber + 1
+    );
+    const newSettlement = !!priorGame && !!game.settlement && !priorGame.settlement;
+    let discardOrigin: ReturnType<typeof center> | undefined;
+    if (motion && priorGame) {
+      const oldRiver = priorGame.seats.find(item => item.seat === self.seat)?.discards;
+      const river = game.seats.find(item => item.seat === self.seat)?.discards;
+      if (oldRiver && river?.length === oldRiver.length + 1) {
+        const removed = previous.self.hand.filter(tile =>
+          tile.face === river.at(-1) && !self.hand.some(held => held.tileId === tile.tileId));
+        if (removed.length === 1) {
+          const target = Array.from(this.hand.children).find(tile => (tile as HTMLElement).dataset.tileId === removed[0].tileId);
+          if (target) discardOrigin = center(target);
+        }
+      }
+    }
+    if (!sameTable || previous.game?.window?.windowId !== game.window?.windowId) this.selection = null;
+    this.canAct = canAct;
     this.options = self.legalOptions;
     this.discardOptions = new Map(self.legalOptions.filter(option => option.kind === "discard" && option.tileIds.length === 1)
       .map(option => [option.tileIds[0], option]));
@@ -278,8 +299,9 @@ export class TableView {
     this.pauseButton.disabled = !canAct;
     text(this.pauseButton, room.paused ? "Resume" : "Pause");
 
-    let discarded = false;
-    let called = false;
+    const discards: { lane: Lane; face: Tile["face"]; own: boolean }[] = [];
+    const calls: { lane: Lane; kind: Meld["kind"] | "reveal" }[] = [];
+    const scores: { lane: Lane; delta: number; cause: string }[] = [];
     this.lanes.forEach((lane, i) => {
       const seat = ((self.seat + i) % 4) as Seat;
       const lobby = room.seats.find(item => item.seat === seat);
@@ -294,9 +316,8 @@ export class TableView {
         trigger.faces.length === 1 && trigger.faces[0] === table.discards.at(-1);
       updateLane(lane, lobby, table, self.seat, game.dealerSeat,
         game.turnSeat === seat && game.phase === "turn", count, pendingDiscard);
-      if (before && table.discards.length > before.discards.length) {
-        discarded = true;
-        if (motion) this.animate(lane.river.lastElementChild?.querySelector(".tile-face"), "translateY(5px)", 210);
+      if (before && table.discards.length === before.discards.length + 1) {
+        discards.push({ lane, face: table.discards.at(-1)!, own: seat === self.seat });
       }
       if (seat === self.seat) {
         setMelds(this.melds, table.melds, game.dealerSeat, true);
@@ -309,32 +330,28 @@ export class TableView {
         lane.feedback.dataset.kind = score.delta < 0 ? "loss" : "score";
         const cause = winner?.winBy === "selfDraw" ? "Self-draw" : winner?.winBy === "robKong" ? "Rob kong" : winner ? "Hu" : "";
         text(lane.feedback, `${cause ? `${cause} · ` : ""}${signed(score.delta)}`);
-        if (motion && newSettlement) this.animate(lane.feedback, "translateY(7px) scale(.9)", 420);
+        if (newSettlement) scores.push({ lane, delta: score.delta, cause });
       } else if (changed || room.paused) {
         const meld = before && table.melds.find((item, index) => meldKey(item, index) !==
           (before.melds[index] && meldKey(before.melds[index], index)));
-        const label = meld ? meldNames[meld.kind] : before && table.revealedTiles.length > before.revealedTiles.length ? "Reveal" : "";
-        lane.feedback.hidden = !label;
+        const kind = meld?.kind ?? (before && table.revealedTiles.length > before.revealedTiles.length ? "reveal" : null);
+        lane.feedback.hidden = !kind;
         lane.feedback.dataset.kind = "call";
-        text(lane.feedback, label);
-        if (label) {
-          called = true;
-          if (motion) this.animate(lane.feedback, "translateY(5px) scale(.92)", 310);
-        }
+        text(lane.feedback, kind === "reveal" ? "Reveal" : kind ? meldNames[kind] : "");
+        if (kind) calls.push({ lane, kind });
       }
     });
 
     const ordered = self.hand.filter(tile => tile.tileId !== self.drawnTileId)
       .sort((a, b) => a.face.localeCompare(b.face) || a.tileId.localeCompare(b.tileId));
     const drawn = self.hand.find(tile => tile.tileId === self.drawnTileId);
-    const newDraw = live && !!drawn && drawn.tileId !== previous?.self.drawnTileId;
+    const newDraw = live && !!drawn && drawn.tileId !== previous.self.drawnTileId;
     if (drawn) ordered.push(drawn);
     text(this.handTitle, `Your hand · ${self.hand.length} concealed`);
-    reconcile(this.hand, ordered, tile => tile.tileId, tile => this.tile(tile), (node, tile, _, fresh) => {
+    reconcile(this.hand, ordered, tile => tile.tileId, tile => this.tile(tile), (node, tile) => {
       const isDrawn = tile.tileId === self.drawnTileId;
       node.classList.toggle("is-drawn", isDrawn);
       node.setAttribute("aria-label", `${faceName(tile.face)}${isDrawn ? ", drawn tile" : ""}`);
-      if (fresh && isDrawn && newDraw && motion) this.animate(node.firstElementChild, "translateX(6px)", 220);
     });
     const nonDiscards = self.legalOptions.filter(option => option.kind !== "discard")
       .sort((a, b) => choiceOrder.indexOf(a.kind) - choiceOrder.indexOf(b.kind));
@@ -342,10 +359,52 @@ export class TableView {
     this.resultButton.hidden = !game.settlement;
     text(this.resultButton, room.status === "complete" ? "Match results" : "Hand results");
     this.tick(now, true);
+
+    const drawFlight = motion && priorGame && newDraw && !previous.self.hand.some(tile => tile.tileId === drawn.tileId);
+    if (motion && (deal || drawFlight || discards.length || calls.length || scores.length)) {
+      const surface = this.effects.root.getBoundingClientRect();
+      const stage = this.stage.getBoundingClientRect();
+      // Read the in-flow anchors before adding any overlay nodes.
+      const render: (() => void)[] = [];
+      if (deal) {
+        // Backed packets are decorative; neither projected wall shows its true order.
+        const tiles = Array.from(this.hand.children);
+        const origin = center(this.lanes[2].wall);
+        for (let i = 0; i < Math.min(4, tiles.length); i++) {
+          const to = center(tiles[Math.floor((i + .5) * tiles.length / 4)]);
+          render.push(() => this.effects.flight(surface, "deal", { x: origin.x + (i - 1.5) * 13, y: origin.y }, to, null, i * 64));
+        }
+      }
+      if (drawFlight) {
+        const target = this.hand.lastElementChild!;
+        const from = center(this.lanes[1].wall), to = center(target);
+        render.push(() => this.effects.flight(surface, "draw", from, to, drawn.face, 0, target.querySelector(".tile-face") ?? undefined));
+      }
+      for (const { lane, face, own } of discards) {
+        const target = lane.river.lastElementChild!;
+        const from = (own ? discardOrigin : undefined) ?? center(lane.label);
+        const to = center(target);
+        render.push(() => this.effects.flight(surface, "discard", from, to, face, 0, target.querySelector(".tile-face") ?? undefined));
+      }
+      for (const { lane, kind } of calls) {
+        const spot = seatSpot(stage, lane.label);
+        render.push(() => this.effects.stamp(surface, spot, kind));
+      }
+      for (const { lane, delta, cause } of scores) {
+        const spot = seatSpot(stage, lane.label);
+        if (cause) render.push(() => this.effects.stamp(surface, spot, "win", cause === "Hu" ? "Hu · Win" : cause));
+        if (delta) {
+          const side = spot.x >= stage.x + stage.width * .48 ? -1 : 1;
+          const point = cause ? { x: spot.x + side * 57, y: spot.y + 35 } : spot;
+          render.push(() => this.effects.score(surface, point, signed(delta), delta > 0));
+        }
+      }
+      render.forEach(paint => paint());
+    }
     if (newSettlement) return game.settlement!.reason === "win" ? "win" : "exhausted";
-    if (called) return "call";
+    if (calls.length) return "call";
     if (newDraw) return "draw";
-    if (discarded) return "discard";
+    if (discards.length) return "discard";
     if (live && game.turnSeat === self.seat && game.turnSeat !== priorGame?.turnSeat) return "turn";
   }
 
@@ -381,7 +440,7 @@ export class TableView {
 
   clearEffects(): void {
     this.selection = null;
-    this.stopMotion();
+    this.effects.clear();
     for (const { feedback } of this.lanes) {
       if (feedback.dataset.kind === "call") feedback.hidden = true;
     }
