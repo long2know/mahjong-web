@@ -190,6 +190,45 @@ test("projected plane and real lane taps survive orientation and inset padding",
   await writeFile(testInfo.outputPath("plane-geometry.json"), JSON.stringify({ ...landscape, compact, dealer }, null, 2));
 });
 
+test("wrapped discard confirmation does not move the compact rack", async ({ page }) => {
+  await page.setViewportSize({ width: 740, height: 320 });
+  await page.goto(`${fixture}?insets&dealer`);
+  // Wider glyph spacing reproduces the two-line label seen with the CI runner's fonts.
+  await page.addStyleTag({ content: ".discard-confirm { letter-spacing: .12em; word-spacing: .16em; }" });
+  await page.getByRole("button", { name: "Fixture draw" }).tap();
+  const tile = page.getByRole("button", { name: "9 characters, drawn tile" });
+  const confirm = page.getByRole("button", { name: /^Discard / });
+  const before = (await tile.boundingBox())!;
+  const target = (await confirm.boundingBox())!;
+
+  await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+  await expect(tile).toHaveAttribute("aria-pressed", "true");
+  await expect(confirm).toHaveAccessibleName("Discard 9 characters");
+  expect(await tile.boundingBox()).toEqual(before);
+  expect(await confirm.boundingBox()).toEqual(target);
+  expect(Math.min(target.width, target.height)).toBeGreaterThanOrEqual(44);
+  expect(target.y + target.height).toBeLessThanOrEqual(320 - testInsets.bottom);
+  await expect(confirm).toBeInViewport({ ratio: 1 });
+  await assertNoHorizontalOverflow(page);
+  expect(await confirm.evaluate(button => {
+    const text = document.createRange();
+    text.selectNodeContents(button);
+    const lines = [...text.getClientRects()];
+    const bounds = button.getBoundingClientRect();
+    return {
+      wraps: new Set(lines.map(line => line.top)).size > 1,
+      fits: lines.every(line => line.top >= bounds.top && line.bottom <= bounds.bottom &&
+        line.left >= bounds.left && line.right <= bounds.right),
+    };
+  })).toEqual({ wraps: true, fits: true });
+
+  const fixtureRoot = page.locator("#fixture");
+  await expect(fixtureRoot).toHaveAttribute("data-discards", "0");
+  await page.touchscreen.tap(target.x + target.width / 2, target.y + target.height / 2);
+  await expect(fixtureRoot).toHaveAttribute("data-discards", "1");
+  await expect(fixtureRoot).toHaveAttribute("data-chosen", "fixture-draw");
+});
+
 test("committed feedback follows the right river, calls and scores without replaying on sync", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 360 });
   await page.goto(`${fixture}?insets&feedback`);
@@ -226,6 +265,7 @@ test("committed feedback follows the right river, calls and scores without repla
   await expect(caller.getByRole("group", { name: /Peng/ })).toHaveCount(1);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
   const settlementAnimated = await page.evaluate(() => {
     (window as FeedbackWindow).feedbackFixture.paint("settle");
     return [...document.querySelectorAll(".seat-feedback")].some(badge => badge.getAnimations().length);

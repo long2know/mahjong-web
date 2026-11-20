@@ -433,7 +433,13 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; line-
   .wall-count { font-size: 1.39rem; }
   .rack, .table-actions { align-self: start; }
   .table-actions { gap: 4px; padding: 4px 6px; }
-  .table-actions .discard-confirm { width: 100%; }
+  /* Reserve the wrapped label's space before selection so it cannot push down the rack. */
+  .table-actions .discard-confirm {
+    width: 100%; min-height: max(44px, calc(2lh + 4px)); padding-block: 1px; overflow-wrap: anywhere;
+  }
+  .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .table-actions:has(.discard-confirm:not([hidden])) .action-hint {
+    min-height: 2lh;
+  }
   .rack { grid-template-areas: "title" "melds" "hand"; gap: 2px 6px; padding-block: 3px 4px; }
   .rack:has(.local-melds[hidden]) { grid-template-areas: "title" "hand"; }
   .rack-title { font-size: .72rem; }
@@ -481,9 +487,6 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; line-
   .rack { column-gap: 4px; }
   .hand-grid { column-gap: 1px; }
   .is-drawn { margin-inline-start: 5px; }
-  .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .table-actions:has(.discard-confirm:not([hidden])) .action-hint {
-    min-height: 2.5em;
-  }
   .play:has(.local-melds > :nth-child(3), .local-melds > .meld-added) {
     --dock-reserve: 196px;
     grid-template-areas: "status rack" "board rack" "actions rack";
