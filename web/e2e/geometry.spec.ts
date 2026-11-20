@@ -229,8 +229,33 @@ test("wrapped discard confirmation does not move the compact rack", async ({ pag
   await expect(fixtureRoot).toHaveAttribute("data-chosen", "fixture-draw");
 });
 
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
+
+function expectSystemMotion(page: Page, reduced: boolean): Promise<void> {
+  return expect.poll(() => page.evaluate(query => matchMedia(query).matches, reducedMotionQuery)).toBe(reduced);
+}
+
+function settlementStartsMotion(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const animate = Element.prototype.animate;
+    let started = false;
+    Element.prototype.animate = function (this: Element, ...args: Parameters<Element["animate"]>) {
+      started ||= this.matches(".seat-feedback");
+      return animate.apply(this, args);
+    };
+    try {
+      (window as FeedbackWindow).feedbackFixture.paint("settle");
+      return started || [...document.querySelectorAll(".seat-feedback")].some(badge =>
+        badge.getAnimations().some(animation => animation.playState !== "idle"));
+    } finally {
+      Element.prototype.animate = animate;
+    }
+  });
+}
+
 test("committed feedback follows the right river, calls and scores without replaying on sync", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 360 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto(`${fixture}?insets&feedback`);
   const river = page.locator(".river--right");
   for (const kind of ["discard", "seabed", "cannon"] as const) {
@@ -265,18 +290,32 @@ test("committed feedback follows the right river, calls and scores without repla
   await expect(caller.getByRole("group", { name: /Peng/ })).toHaveCount(1);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect.poll(() => page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)).toBe(true);
-  const settlementAnimated = await page.evaluate(() => {
-    (window as FeedbackWindow).feedbackFixture.paint("settle");
-    return [...document.querySelectorAll(".seat-feedback")].some(badge => badge.getAnimations().length);
-  });
-  expect(settlementAnimated).toBe(false);
+  await expectSystemMotion(page, true);
+  expect(await settlementStartsMotion(page)).toBe(false);
   await expect(caller.locator(".seat-feedback")).toHaveText("Hu · +8");
   await expect(page.locator('.seat-label[data-seat="0"] .seat-feedback')).toHaveText("−8");
   await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("base", false));
   await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("call", false));
   await expect(caller.getByRole("group", { name: /Peng/ })).toHaveCount(1);
   await expect(caller.locator(".seat-feedback")).toBeHidden();
+});
+
+test("settlement follows initial OS motion settings and changes to saved preferences", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`${fixture}?feedback`);
+  await expectSystemMotion(page, true);
+  expect(await settlementStartsMotion(page)).toBe(false);
+  await expect(page.locator('.seat-label[data-seat="2"] .seat-feedback')).toHaveText("Hu · +8");
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expectSystemMotion(page, false);
+  for (const reduced of [false, true, false]) {
+    await page.evaluate(reduced => {
+      document.documentElement.dataset.reducedMotion = String(reduced);
+      (window as FeedbackWindow).feedbackFixture.paint("base", false);
+    }, reduced);
+    expect(await settlementStartsMotion(page), `saved reduced motion: ${reduced}`).toBe(!reduced);
+  }
 });
 
 type AudioTrace = {
