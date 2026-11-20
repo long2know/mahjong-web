@@ -1,8 +1,54 @@
 {
   "schema": "squad-agent-provenance/v1",
   "schema_version": 1,
-  "revision": 1,
-  "generated_at": "1970-01-01T00:00:00.000Z",
-  "agents": {},
-  "transaction_id": "5c570672-b1a6-4a38-8d21-954dffa05090"
+  "revision": 6,
+  "generated_at": "2026-11-19T22:32:21.569Z",
+  "agents": {
+    "lead": {
+      "display_name": "Lead",
+      "persistent_name": "Lead",
+      "role": "Lead / Architect",
+      "universe": "cli-cast",
+      "status": "active",
+      "created_at": "2026-11-19T22:32:20.040Z",
+      "updated_at": "2026-11-19T22:32:20.040Z"
+    },
+    "rules": {
+      "display_name": "Rules",
+      "persistent_name": "Rules",
+      "role": "Game Developer",
+      "universe": "cli-cast",
+      "status": "active",
+      "created_at": "2026-11-19T22:32:20.439Z",
+      "updated_at": "2026-11-19T22:32:20.439Z"
+    },
+    "backend": {
+      "display_name": "Backend",
+      "persistent_name": "Backend",
+      "role": "Backend Developer",
+      "universe": "cli-cast",
+      "status": "active",
+      "created_at": "2026-11-19T22:32:20.821Z",
+      "updated_at": "2026-11-19T22:32:20.821Z"
+    },
+    "frontend": {
+      "display_name": "Frontend",
+      "persistent_name": "Frontend",
+      "role": "Frontend Developer",
+      "universe": "cli-cast",
+      "status": "active",
+      "created_at": "2026-11-19T22:32:21.197Z",
+      "updated_at": "2026-11-19T22:32:21.197Z"
+    },
+    "infra": {
+      "display_name": "Infra",
+      "persistent_name": "Infra",
+      "role": "DevOps Engineer",
+      "universe": "cli-cast",
+      "status": "active",
+      "created_at": "2026-11-19T22:32:21.569Z",
+      "updated_at": "2026-11-19T22:32:21.569Z"
+    }
+  },
+  "transaction_id": "59a4eb5e-5af2-4b93-8be7-166b89db3c38"
 }

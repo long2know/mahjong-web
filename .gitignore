@@ -38,6 +38,19 @@ ScaffoldingReadMe.txt
 
 # dotenv environment variables file
 .env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# Local self-hosted application state
+/data/
+/src/Mahjong.Server/data/
+/backups/
+
+# Local browser profiles, binaries, and captures from reference reviews
+/.reference-probe-*/
+/.reference-followup-*/
 
 # Others
 ~$*
