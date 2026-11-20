@@ -48,6 +48,10 @@ ScaffoldingReadMe.txt
 /src/Mahjong.Server/data/
 /backups/
 
+# Local browser profiles, binaries, and captures from reference reviews
+/.reference-probe-*/
+/.reference-followup-*/
+
 # Others
 ~$*
 *~
