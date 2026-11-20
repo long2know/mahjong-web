@@ -1,7 +1,8 @@
 import { defaultPreferences } from "./protocol";
 import type { Preferences } from "./protocol";
+import type { TableCue } from "./table";
 
-type Effect = "select" | "turn" | "settle";
+type Effect = "select" | TableCue;
 
 const chords = [
   [146.83, 220, 293.66], [130.81, 196, 261.63], [110, 164.81, 261.63], [146.83, 174.61, 220],
@@ -11,15 +12,20 @@ export class LanternAudio {
   private context: AudioContext | null = null;
   private effects: GainNode | null = null;
   private music: GainNode | null = null;
+  private noise: AudioBuffer | null = null;
+  private readonly voices = new Map<AudioScheduledSourceNode, GainNode>();
   private prefs = defaultPreferences;
   private musicTimer = 0;
   private chord = 0;
-  private activating = false;
   private unavailable = false;
 
   constructor() {
-    window.addEventListener("pointerdown", () => void this.unlock(), { passive: true });
-    window.addEventListener("keydown", () => void this.unlock());
+    const activate = (event: Event) => { if (event.isTrusted) void this.unlock(); };
+    // Touch and pen grant activation on release, not pointerdown.
+    window.addEventListener("pointerdown", event => { if (event.pointerType === "mouse") activate(event); }, { passive: true });
+    window.addEventListener("pointerup", event => { if (event.pointerType !== "mouse") activate(event); }, { passive: true });
+    window.addEventListener("touchend", activate, { passive: true });
+    window.addEventListener("keydown", activate);
     document.addEventListener("visibilitychange", () => this.updateBuses());
   }
 
@@ -30,9 +36,8 @@ export class LanternAudio {
   }
 
   async unlock(explicit = false): Promise<void> {
-    if (this.activating || this.unavailable || this.context?.state === "running" ||
+    if (this.unavailable || this.context?.state === "running" || navigator.userActivation?.isActive === false ||
       (!explicit && !this.prefs.sound && !this.prefs.music)) return;
-    this.activating = true;
     try {
       if (!this.context) {
         const Safari = (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -50,7 +55,6 @@ export class LanternAudio {
       await this.context.resume();
       this.updateBuses();
     } catch { /* Autoplay restrictions do not block play. */ }
-    finally { this.activating = false; }
   }
 
   configure(prefs: Preferences): void {
@@ -60,20 +64,62 @@ export class LanternAudio {
   }
 
   play(effect: Effect): void {
-    if (!this.effects || this.context?.state !== "running" || !this.prefs.sound || document.hidden) return;
-    if (effect === "select") this.tone(this.effects, 370, 0, .07, .14, "triangle");
-    if (effect === "turn") {
-      this.tone(this.effects, 523.25, 0, .24, .12);
-      this.tone(this.effects, 659.25, .085, .27, .09);
+    const bus = this.effects;
+    if (!bus || this.context?.state !== "running" || !this.prefs.sound || !this.prefs.volume || document.hidden) return;
+    this.clearEffects();
+    switch (effect) {
+      case "select":
+        this.strike(0, 2450, .024, .085);
+        this.tone(bus, 740, 0, .045, .045, "triangle");
+        break;
+      case "draw":
+        this.strike(0, 1060, .072, .065);
+        this.tone(bus, 340, .034, .09, .09, "triangle");
+        this.tone(bus, 680, .039, .1, .07);
+        break;
+      case "discard":
+        this.strike(0, 1850, .033, .16);
+        this.tone(bus, 490, 0, .085, .12, "triangle");
+        this.tone(bus, 1330, .006, .045, .06);
+        break;
+      case "call":
+        this.strike(0, 1610, .045, .13);
+        this.strike(.06, 2340, .035, .12);
+        this.tone(bus, 554.37, .04, .18, .07, "triangle");
+        this.tone(bus, 830.61, .1, .25, .09);
+        break;
+      case "turn":
+        this.tone(bus, 392, 0, .17, .08, "triangle");
+        this.tone(bus, 587.33, .074, .2, .08);
+        break;
+      case "win":
+        [392, 493.88, 587.33, 783.99].forEach((frequency, index) => {
+          this.tone(bus, frequency, index * .085, .39, .105);
+          this.tone(bus, frequency * 2.01, index * .085, .21, .027, "triangle");
+        });
+        break;
+      case "exhausted":
+        this.tone(bus, 293.66, 0, .32, .09, "triangle");
+        this.tone(bus, 196, .12, .43, .11);
+        break;
     }
-    if (effect === "settle") {
-      [293.66, 369.99, 440].forEach((frequency, index) => this.tone(this.effects!, frequency, index * .11, .38, .11));
+  }
+
+  clearEffects(): void {
+    if (!this.context) return;
+    const now = this.context.currentTime;
+    for (const [source, envelope] of this.voices) {
+      envelope.gain.cancelScheduledValues(now);
+      envelope.gain.setTargetAtTime(0, now, .005);
+      source.stop(now + .02);
     }
+    this.voices.clear();
   }
 
   private updateBuses(): void {
     if (!this.context || !this.effects || !this.music) return;
     const visible = !document.hidden;
+    if (!this.prefs.sound || !this.prefs.volume || !visible) this.clearEffects();
     this.effects.gain.setTargetAtTime(this.prefs.sound && visible ? this.prefs.volume : 0, this.context.currentTime, .02);
     this.music.gain.setTargetAtTime(this.prefs.music && visible ? this.prefs.volume : 0, this.context.currentTime, .02);
     const listening = this.prefs.music && this.prefs.volume > 0 && visible && this.context.state === "running";
@@ -89,23 +135,53 @@ export class LanternAudio {
   private playChord(): void {
     if (!this.music || this.context?.state !== "running") return;
     const next = chords[this.chord++ % chords.length];
-    next.forEach((frequency, index) => this.tone(this.music!, frequency, .14 * index, 1.28, .035));
+    next.forEach((frequency, index) => this.tone(this.music!, frequency, .17 * index, 1.45, .029));
+    this.tone(this.music, next[0] / 2, 0, 1.76, .019);
   }
 
   private tone(bus: AudioNode, frequency: number, wait: number, duration: number, level: number, wave: OscillatorType = "sine"): void {
     const context = this.context!;
     const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const time = context.currentTime + wait;
     oscillator.type = wave;
     oscillator.frequency.value = frequency;
+    this.voice(oscillator, bus, wait, duration, level, .012);
+  }
+
+  private strike(wait: number, frequency: number, duration: number, level: number): void {
+    const context = this.context!;
+    if (!this.noise) {
+      this.noise = context.createBuffer(1, Math.ceil(context.sampleRate * .09), context.sampleRate);
+      const samples = this.noise.getChannelData(0);
+      for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+    }
+    const source = context.createBufferSource();
+    source.buffer = this.noise;
+    const band = context.createBiquadFilter();
+    band.type = "bandpass";
+    band.frequency.value = frequency;
+    band.Q.value = .95;
+    this.voice(source, this.effects!, wait, duration, level, .002, band);
+  }
+
+  private voice(source: AudioScheduledSourceNode, bus: AudioNode, wait: number, duration: number, level: number,
+    attack: number, filter?: BiquadFilterNode): void {
+    const context = this.context!;
+    const gain = context.createGain();
+    const time = context.currentTime + wait;
     gain.gain.setValueAtTime(.0001, time);
-    gain.gain.exponentialRampToValueAtTime(level, time + .017);
+    gain.gain.exponentialRampToValueAtTime(level, time + attack);
     gain.gain.exponentialRampToValueAtTime(.0001, time + duration);
-    oscillator.connect(gain);
+    source.connect(filter ?? gain);
+    filter?.connect(gain);
     gain.connect(bus);
-    oscillator.start(time);
-    oscillator.stop(time + duration);
-    oscillator.addEventListener("ended", () => { oscillator.disconnect(); gain.disconnect(); }, { once: true });
+    if (bus === this.effects) this.voices.set(source, gain);
+    source.addEventListener("ended", () => {
+      this.voices.delete(source);
+      source.disconnect();
+      filter?.disconnect();
+      gain.disconnect();
+    }, { once: true });
+    source.start(time);
+    source.stop(time + duration);
   }
 }

@@ -8,6 +8,7 @@ import { ChatPanel, HomeScreen, WaitingRoom, field, iconButton, resultsContent, 
 import { errorMessage, TableSession } from "./session";
 import type { Connection } from "./session";
 import { TableView } from "./table";
+import type { TableCue } from "./table";
 
 const connectionText: Record<Connection, string> = {
   connecting: "Connecting", syncing: "Syncing", online: "Online", offline: "Offline",
@@ -80,6 +81,7 @@ class LanternTable {
   private previous: Snapshot | null = null;
   private connectionBefore: Connection = "connecting";
   private resultKey = "";
+  private resultReveal = 0;
   private message = "";
   private overlayActions: HTMLButtonElement[] = [];
 
@@ -225,7 +227,12 @@ class LanternTable {
     const state = this.session.snapshot;
     const available = this.session.available && !this.profileBusy;
     const scene = state?.room.status === "waiting" ? "waiting" : state?.game ? "play" : "home";
-    if (this.connectionBefore === "online" && this.session.status !== "online") this.table.clearEffects();
+    const interrupted = this.connectionBefore === "online" && this.session.status !== "online" ||
+      this.scene === "play" && scene !== "play";
+    if (interrupted) {
+      this.table.clearEffects();
+      this.audio.clearEffects();
+    }
     this.connectionBefore = this.session.status;
     this.paintConnection();
     this.chatButton.hidden = !state;
@@ -248,24 +255,40 @@ class LanternTable {
       if (scene === "home" && !initial) void this.refresh();
     }
 
+    let cue: TableCue | undefined;
     if (state) {
       if (!this.previous || this.previous.roomId !== state.roomId) this.chat.reset();
       this.chat.update(state.room.chat ?? [], state.self.seat, available);
       if (scene === "waiting") this.waiting.update(state, available);
-      else if (state.game) this.table.update(state, available, this.session.now, effect);
+      else if (state.game) cue = this.table.update(state, available, this.session.now, effect);
     }
+    if (cue) this.audio.play(cue);
     this.overlayActions.forEach(control => { control.disabled = !available; });
 
     const settlement = state?.game?.settlement;
     const key = settlement ? `${state!.roomId}:${state!.game!.handNumber}:${state!.gameRevision}` : "";
     if (key !== this.resultKey) {
+      this.cancelResultReveal();
       this.resultKey = key;
-      if (key && !this.modal.root.open) this.openResults();
-      if (key && effect) this.audio.play("settle");
+      if (key && !this.modal.root.open) {
+        if ((cue === "win" || cue === "exhausted") && this.table.motionEnabled) {
+          this.resultReveal = window.setTimeout(() => {
+            this.resultReveal = 0;
+            if (!this.modal.root.open) this.openResults();
+          }, 540);
+        } else this.openResults();
+      }
       if (!key && this.modal.kind === "results") this.modal.close();
+    } else if (this.resultReveal && (interrupted || !this.table.motionEnabled)) {
+      this.cancelResultReveal();
+      if (!this.modal.root.open) this.openResults();
     }
-    if (effect && state?.game?.turnSeat === state?.self.seat && this.previous?.game?.turnSeat !== state?.self.seat) this.audio.play("turn");
     this.previous = state;
+  }
+
+  private cancelResultReveal(): void {
+    clearTimeout(this.resultReveal);
+    this.resultReveal = 0;
   }
 
   private modalClosed(): void {
@@ -391,6 +414,7 @@ class LanternTable {
   }
 
   private openResults(): void {
+    this.cancelResultReveal();
     const state = this.session.snapshot;
     if (!state?.game?.settlement) return;
     const complete = state.room.status === "complete";

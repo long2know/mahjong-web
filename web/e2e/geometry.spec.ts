@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import type { FeedbackWindow } from "./fixtures/geometry";
 
 const fixture = `http://127.0.0.1:${Number(process.env.MAHJONG_GEOMETRY_PORT ?? 4179)}/e2e/fixtures/geometry.html`;
 const noInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -154,7 +155,149 @@ test("projected plane and real lane taps survive orientation and inset padding",
   const discard = (await page.getByRole("button", { name: "Discard 5 dots", exact: true }).boundingBox())!;
   expect(discard.y + discard.height).toBeLessThanOrEqual(360 - testInsets.bottom);
   await page.screenshot({ path: testInfo.outputPath("four-kong-fixture-landscape.png"), fullPage: true });
-  await writeFile(testInfo.outputPath("plane-geometry.json"), JSON.stringify({
+  const landscape = {
     browser: browser.version(), insets: testInsets, projections, kongs: await extent(melds), hand: await extent(hand),
-  }, null, 2));
+  };
+
+  await page.setViewportSize({ width: 740, height: 320 });
+  await page.goto(`${fixture}?insets&dealer`);
+  await page.getByRole("button", { name: "Fixture draw" }).tap();
+  const drawn = page.getByRole("button", { name: "9 characters, drawn tile" });
+  const before = (await drawn.boundingBox())!;
+  await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+  await expect(drawn).toHaveAttribute("aria-pressed", "true");
+  expect(await drawn.boundingBox()).toEqual(before);
+  const dealer = { hand: await extent(hand),
+    discard: (await page.getByRole("button", { name: "Discard 9 characters" }).boundingBox())! };
+  expect(dealer.hand.bounds.bottom).toBeLessThanOrEqual(320 - testInsets.bottom);
+  expect(dealer.discard.y + dealer.discard.height).toBeLessThanOrEqual(320 - testInsets.bottom);
+  await expect(page.locator("#fixture")).toHaveAttribute("data-discards", "0");
+
+  await page.goto(`${fixture}?insets&kongs`);
+  await expect(melds).toHaveCount(16);
+  await expect(hand).toHaveCount(2);
+  await assertNoHorizontalOverflow(page);
+  await tapEveryEdge(page, melds, "data-meld-tile", testInsets);
+  await tapEveryEdge(page, hand, "data-tile-id", testInsets);
+  const compact = { viewport: [740, 320], kongs: await extent(melds), hand: await extent(hand),
+    discard: (await page.getByRole("button", { name: "Discard 5 dots", exact: true }).boundingBox())! };
+  expect(compact.discard.y + compact.discard.height).toBeLessThanOrEqual(320 - testInsets.bottom);
+  await page.screenshot({ path: testInfo.outputPath("four-kong-fixture-compact.png") });
+  await page.touchscreen.tap(compact.discard.x + compact.discard.width / 2, compact.discard.y + compact.discard.height / 2);
+  await expect(page.locator("#fixture")).toHaveAttribute("data-discards", "1");
+  await expect(page.locator("#fixture")).toHaveAttribute("data-chosen", "fixture-tile-1");
+
+  await writeFile(testInfo.outputPath("plane-geometry.json"), JSON.stringify({ ...landscape, compact, dealer }, null, 2));
+});
+
+test("committed feedback follows the right river, calls and scores without replaying on sync", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 360 });
+  await page.goto(`${fixture}?insets&feedback`);
+  const river = page.locator(".river--right");
+  for (const kind of ["discard", "seabed", "cannon"] as const) {
+    await page.evaluate(frame => {
+      const { paint } = (window as FeedbackWindow).feedbackFixture;
+      paint("base", false);
+      paint(frame);
+    }, kind);
+    await expect(river.locator(".last-discard").getByRole("img", { name: "7 dots" })).toHaveCount(1);
+    await expect(page.locator(".last-discard")).toHaveCount(1);
+  }
+  await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("rob", false));
+  await expect(page.locator(".center-trigger").getByRole("img", { name: "7 dots" })).toBeVisible();
+  await expect(page.locator(".last-discard")).toHaveCount(0);
+
+  const motion = await page.evaluate(() => {
+    const { paint } = (window as FeedbackWindow).feedbackFixture;
+    paint("draw");
+    const drawn = document.querySelector(".hand-tile.is-drawn .tile-face")!;
+    const flight = drawn.getAnimations()[0];
+    paint("cannon");
+    const discard = document.querySelector(".last-discard .tile-face")!.getAnimations()[0];
+    return { drawerAnimated: !!flight, replaced: flight?.playState, riverAnimated: !!discard };
+  });
+  expect(motion).toEqual({ drawerAnimated: true, replaced: "idle", riverAnimated: true });
+
+  const caller = page.locator('.seat-label[data-seat="2"]');
+  await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("call"));
+  await expect(caller.locator(".seat-feedback")).toHaveText("Peng");
+  await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.interrupt());
+  await expect(caller.locator(".seat-feedback")).toBeHidden();
+  await expect(caller.getByRole("group", { name: /Peng/ })).toHaveCount(1);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const settlementAnimated = await page.evaluate(() => {
+    (window as FeedbackWindow).feedbackFixture.paint("settle");
+    return [...document.querySelectorAll(".seat-feedback")].some(badge => badge.getAnimations().length);
+  });
+  expect(settlementAnimated).toBe(false);
+  await expect(caller.locator(".seat-feedback")).toHaveText("Hu · +8");
+  await expect(page.locator('.seat-label[data-seat="0"] .seat-feedback')).toHaveText("−8");
+  await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("base", false));
+  await page.evaluate(() => (window as FeedbackWindow).feedbackFixture.paint("call", false));
+  await expect(caller.getByRole("group", { name: /Peng/ })).toHaveCount(1);
+  await expect(caller.locator(".seat-feedback")).toBeHidden();
+});
+
+type AudioTrace = {
+  starts: { id: number; noise: boolean }[];
+  stops: { id: number; when: number }[];
+};
+type AudioWindow = FeedbackWindow & { fixtureAudio: AudioTrace; webkitAudioContext?: typeof AudioContext };
+
+test("original tile and call cues obey unlock, replacement and mute", async ({ page }) => {
+  await page.addInitScript(() => {
+    const scope = window as AudioWindow;
+    const trace: AudioTrace = { starts: [], stops: [] };
+    scope.fixtureAudio = trace;
+    const context = (scope.AudioContext ?? scope.webkitAudioContext)!.prototype;
+    let serial = 0;
+    for (const method of ["createOscillator", "createBufferSource"] as const) {
+      const original: (this: AudioContext) => AudioScheduledSourceNode = context[method];
+      Object.defineProperty(context, method, { configurable: true, value(this: AudioContext) {
+        const node = original.call(this);
+        const id = serial++;
+        const start = node.start.bind(node);
+        const stop = node.stop.bind(node);
+        node.start = (when?: number) => {
+          trace.starts.push({ id, noise: method === "createBufferSource" });
+          start(when);
+        };
+        node.stop = (when = 0) => {
+          trace.stops.push({ id, when });
+          stop(when);
+        };
+        return node;
+      } });
+    }
+  });
+  await page.goto(`${fixture}?feedback&audio`);
+  const locked = await page.evaluate(() => {
+    const { paint } = (window as AudioWindow).feedbackFixture;
+    paint("discard");
+    return (window as AudioWindow).fixtureAudio.starts.length;
+  });
+  expect(locked).toBe(0);
+  await page.getByRole("button", { name: "Enable fixture sound" }).tap();
+  await expect.poll(() => page.evaluate(() => (window as AudioWindow).feedbackFixture.audioReady())).toBe(true);
+
+  const playback = await page.evaluate(() => {
+    const { feedbackFixture: audio, fixtureAudio: trace } = window as AudioWindow;
+    audio.paint("base", false);
+    audio.paint("discard");
+    const strike = trace.starts.slice();
+    const before = trace.stops.slice();
+    audio.paint("call");
+    const call = trace.starts.slice(strike.length);
+    const replaced = before.some(voice => trace.stops.slice(before.length).some(next => next.id === voice.id && next.when < voice.when));
+    const starts = trace.starts.length;
+    audio.mute();
+    audio.paint("settle");
+    return { strike, call, replaced, afterMute: trace.starts.length - starts };
+  });
+  expect(playback.strike.some(voice => voice.noise)).toBe(true);
+  expect(playback.strike.some(voice => !voice.noise)).toBe(true);
+  expect(playback.call.filter(voice => voice.noise).length).toBeGreaterThan(playback.strike.filter(voice => voice.noise).length);
+  expect(playback.replaced).toBe(true);
+  expect(playback.afterMute).toBe(0);
 });

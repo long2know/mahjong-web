@@ -1,7 +1,10 @@
 import "../../src/styles.css";
+import { LanternAudio } from "../../src/audio";
 import { button, el, icon } from "../../src/dom";
+import { defaultPreferences } from "../../src/protocol";
 import type { Face, Meld, Seat, Snapshot, Tile } from "../../src/protocol";
 import { TableView } from "../../src/table";
+import type { TableCue } from "../../src/table";
 
 const params = new URLSearchParams(location.search);
 const kongs = params.has("kongs");
@@ -15,7 +18,7 @@ const shell = el("main", "shell");
 const hand: Tile[] = (kongs ? ["c2", "d5"] : [
   "b1", "b3", "b3", "b6", "b7", "c2", "c2", "c4", "c6", "c9", "d1", "d5", "d6",
 ]).map((face, i) => ({ tileId: `fixture-tile-${i}`, face: face as Face }));
-const drawn: Tile = { tileId: "fixture-draw", face: "d9" };
+const drawn: Tile = { tileId: "fixture-draw", face: params.has("dealer") ? "c9" : "d9" };
 const seats = [0, 1, 2, 3] as Seat[];
 const clock = Date.parse("2030-01-01T00:00:00Z");
 const melds: Meld[] = kongs ? [
@@ -36,7 +39,7 @@ function state(draw: boolean): Snapshot {
         ready: true, displayName: ["River", "Willow", "Ink", "Jade"][seat],
       })) },
     game: {
-      handNumber: 1, dealerSeat: 2, phase: "turn", turnSeat: 0, wallCount: 48,
+      handNumber: 1, dealerSeat: params.has("dealer") ? 0 : 2, phase: "turn", turnSeat: 0, wallCount: 48,
       seats: seats.map(seat => ({ seat, concealedCount: seat === 0 ? tiles.length : 13,
         discards: ["d1", "b2", "c7", "c4", "b1", "d2", "d6", "b3", "b4"],
         melds: seat === 0 ? melds : [], revealedTiles: [], total: 0 })),
@@ -51,6 +54,7 @@ function state(draw: boolean): Snapshot {
 
 mount.dataset.discards = "0";
 mount.dataset.hitSequence = "0";
+const audio = params.has("audio") ? new LanternAudio() : null;
 const draw = button("Fixture draw", "btn subtle", () => {
   render(true);
   draw.disabled = true;
@@ -64,12 +68,61 @@ const table = new TableView({
 });
 const header = el("header", "site-header", el("div", "brand", el("span", "brand-symbol", icon("lantern")),
   el("div", "", el("p", "brand-name", "Lantern Table"), el("p", "brand-kicker", "Renderer fixture only"))), draw);
+if (audio) header.append(button("Enable fixture sound", "btn subtle", () => void audio.unlock(true)));
 draw.hidden = kongs;
 shell.append(header, table.root);
 mount.append(shell);
 
 function render(draw: boolean): void { table.update(state(draw), true, clock, draw); }
 render(false);
+
+type Frame = "base" | "draw" | "discard" | "seabed" | "cannon" | "rob" | "call" | "settle";
+export type FeedbackWindow = typeof window & {
+  feedbackFixture: {
+    paint: (kind: Frame, live?: boolean) => TableCue | undefined;
+    interrupt: () => void;
+    mute: () => void;
+    audioReady: () => boolean;
+  };
+};
+
+if (params.has("feedback")) {
+  let revision = 2;
+  (window as FeedbackWindow).feedbackFixture = {
+    paint(kind, live = true) {
+      const frame = state(kind === "draw");
+      frame.gameRevision = ++revision;
+      const game = frame.game!;
+      const source = game.seats[3];
+      if (["discard", "seabed", "cannon", "rob"].includes(kind)) {
+        game.phase = "claim";
+        game.turnSeat = null;
+        game.window = { ...game.window!, reason: kind === "discard" ? "discard" : kind === "seabed" ? "lastTile" : "kong",
+          trigger: { seat: 3, faces: ["d7"] } };
+        if (kind === "rob") source.melds = [{ kind: "peng", fromSeat: 2, tiles: ["d7", "d7", "d7"] }];
+        else source.discards.push("d7");
+      }
+      if (kind === "call") game.seats[2].melds = [{ kind: "peng", fromSeat: 3, tiles: ["b8", "b8", "b8"] }];
+      if (kind === "settle") {
+        frame.room.status = "complete";
+        game.phase = "settled";
+        game.turnSeat = null;
+        game.window = null;
+        game.settlement = { reason: "win", nextDealerSeat: 2, sourceSeat: 0, birds: [],
+          winners: [{ seat: 2, winBy: "discard", winningTiles: ["b8"], patterns: [] }],
+          seatResults: seats.map(seat => ({ seat, delta: seat === 0 ? -8 : seat === 2 ? 8 : 0, total: seat === 0 ? -8 : seat === 2 ? 8 : 0 })),
+        };
+        game.seats.forEach((seat, i) => { seat.total = game.settlement!.seatResults[i].total; });
+      }
+      const cue = table.update(frame, true, clock, live);
+      if (cue) audio?.play(cue);
+      return cue;
+    },
+    interrupt() { table.clearEffects(); audio?.clearEffects(); },
+    mute() { audio?.configure({ ...defaultPreferences, sound: false }); },
+    audioReady: () => audio?.note.startsWith("Original synthesized") === true,
+  };
+}
 
 const plane = table.root.querySelector<HTMLElement>(".board-plane")!;
 for (const [id, x, y] of [["near", 50, 88], ["left", 14, 25], ["far", 50, 11], ["right", 87, 77]] as const) {
