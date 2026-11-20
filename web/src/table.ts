@@ -11,6 +11,7 @@ const choiceOrder: OptionKind[] = ["hu", "reveal", "gang", "bu", "peng", "chi", 
 const windowNames = {
   turn: "Turn", opening: "Opening reveal", discard: "Claim window", kong: "Kong response", lastTile: "Last tile",
 } as const;
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
 function meldKey(meld: Meld, index: number): string {
   return `${index}:${meld.kind}:${meld.method ?? ""}:${meld.fromSeat ?? "_"}:${meld.tiles.join("/")}`;
@@ -160,7 +161,7 @@ export class TableView {
   private readonly discard = button("Discard tile", "btn primary discard-confirm", () => this.confirm());
   private readonly resultButton: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
-  private readonly reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  private readonly reduceMotion = matchMedia(reducedMotionQuery);
   private readonly animations = new Set<Animation>();
   private state: Snapshot | null = null;
   private canAct = false;
@@ -198,7 +199,7 @@ export class TableView {
     const actions = el("div", "table-actions", this.hint, this.choices, this.discard, this.resultButton);
     this.hint.setAttribute("aria-live", "polite");
     this.root.append(status, this.stage, rack, actions);
-    this.reduceMotion.addEventListener("change", () => { if (!this.motionEnabled) this.stopMotion(); });
+    this.reduceMotion.addEventListener("change", event => { if (event.matches) this.stopMotion(); });
     document.addEventListener("visibilitychange", () => { if (document.hidden) this.stopMotion(); });
     rack.addEventListener("keydown", event => {
       if (event.key === "Escape" && this.selection) {
@@ -230,7 +231,9 @@ export class TableView {
   }
 
   get motionEnabled(): boolean {
-    return !document.hidden && !this.reduceMotion.matches && document.documentElement.dataset.reducedMotion !== "true";
+    // WebKit can keep the subscribed list stale until the next media change event.
+    return !document.hidden && document.documentElement.dataset.reducedMotion !== "true" &&
+      !matchMedia(reducedMotionQuery).matches;
   }
 
   private animate(node: Element | null | undefined, entry: string, duration: number): void {
