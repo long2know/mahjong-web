@@ -12,7 +12,6 @@ class Player {
   readonly kinds = new Set<string>();
   readonly publicMelds = new Set<string>();
   readonly settlements = new Set<string>();
-  turnSeconds: number | null = null;
 
   constructor(readonly page: Page) {
     page.on("pageerror", error => this.errors.push(error.message));
@@ -76,6 +75,22 @@ async function trackSocketCloses(page: Page): Promise<void> {
         this.addEventListener("close", event => { closes.push(event.code); });
       }
     };
+  });
+}
+
+async function trackFirstTouchAudio(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    let resumes = 0;
+    const Safari = (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const audio = (window.AudioContext ?? Safari).prototype;
+    const resume = audio.resume;
+    audio.resume = function () {
+      resumes++;
+      return resume.call(this).then(() => { document.documentElement.dataset.audioState = this.state; });
+    };
+    window.addEventListener("pointerdown", () => {
+      document.documentElement.dataset.audioResumesBeforeTouch = String(resumes);
+    }, { capture: true, once: true });
   });
 }
 
@@ -167,9 +182,6 @@ async function step(player: Player, handled: Set<string>): Promise<boolean> {
   const actual = state.self.legalOptions.find(legal => legal.optionId === choice.payload.optionId);
   expect(actual?.kind).toBe(option.kind);
   player.kinds.add(option.kind);
-  if (window.reason === "turn" && option.kind === "discard") {
-    player.turnSeconds = Math.ceil((Date.parse(window.deadlineUtc) - Date.parse(state.serverTimeUtc)) / 1000);
-  }
   handled.add(window.windowId);
   return true;
 }
@@ -321,9 +333,15 @@ test("invite table with two cookie sessions: settings, chat, retry, legal match 
 test("normal pacing: public discovery, atomic bot table, takeover and a real discard", async ({ page, context, browser, baseURL }, testInfo) => {
   const host = new Player(page);
   await trackSocketCloses(page);
+  await trackFirstTouchAudio(page);
   const { player: visitor, context: visitorContext } = await other(browser, baseURL!, 430);
   try {
-    await host.open();
+    await page.goto("/");
+    // A raw touch avoids locator evaluations granting activation before the first gesture.
+    await page.touchscreen.tap(26, 28);
+    await expect(page.locator("html")).toHaveAttribute("data-audio-resumes-before-touch", "0");
+    await expect(page.locator("html")).toHaveAttribute("data-audio-state", "running");
+    await expect(page.locator('.connection[data-status="online"]')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("lantern-home-390.png"), fullPage: true });
     await page.route("**/api/rooms", route => route.abort("connectionfailed"));
     await host.click("Refresh public tables");
@@ -359,20 +377,95 @@ test("normal pacing: public discovery, atomic bot table, takeover and a real dis
     await expect(second.page.locator('.connection[data-status="taken-over"]')).toBeVisible();
     await second.page.close();
 
+    await page.setViewportSize({ width: 800, height: 360 });
     await host.click("Mark ready");
     await host.click("Start match");
-    await play([host], () => host.kinds.has("discard"), 25000);
+    const table = page.getByRole("region", { name: "Mahjong table" });
+    await expect(table).toBeVisible();
+    await play([host], () => host.state?.self.legalOptions.some(option => option.kind === "discard") === true, 25000);
+    const decision = host.state!;
+    const decisionWindow = decision.game!.window!;
+    const discards = decision.self.legalOptions.filter(option => option.kind === "discard");
+    const option = discards.find(item => item.tileIds[0] === decision.self.drawnTileId) ?? discards[0];
+    const tileId = option.tileIds[0];
+    const tile = table.locator(`[data-tile-id="${tileId}"]`);
+    const confirm = table.getByRole("button", { name: /^Discard / });
+    const sent = host.choices.length;
+    const layouts = [
+      { width: 800, height: 360, insets: [10, 22, 13, 25], minBoardWidth: 460 },
+      { width: 800, height: 360, insets: [0, 0, 0, 0], minBoardWidth: 460 },
+      { width: 740, height: 320, insets: [10, 22, 13, 25], minBoardWidth: 430 },
+      { width: 667, height: 320, insets: [0, 0, 0, 0], minBoardWidth: 370 },
+    ];
+    const composition = [];
+    for (const { width, height, insets, minBoardWidth } of layouts) {
+      await page.setViewportSize({ width, height });
+      await page.evaluate(margins => {
+        ["t", "r", "b", "l"].forEach((edge, i) => document.documentElement.style.setProperty(`--safe-${edge}`, `${margins[i]}px`));
+        window.scrollTo(0, 0);
+      }, insets);
+      await expect(tile).toHaveAttribute("aria-disabled", "false");
+      const before = (await tile.boundingBox())!;
+      const noInsetLandscape = width === 800 && insets.every(value => !value);
+      if (noInsetLandscape) expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(height + 1);
+      await page.touchscreen.tap(before.x + before.width / 2, before.y + before.height / 2);
+      await expect(tile).toHaveAttribute("aria-pressed", "true");
+      await expect(confirm).toBeEnabled();
+      expect(host.choices, "Only the explicit confirmation may send a choice.").toHaveLength(sent);
+      const after = await table.evaluate((node, id) => {
+        const bounds = (selector: string) => {
+          const element = node.querySelector(selector)!;
+          const { x, y, width, height, right, bottom } = element.getBoundingClientRect();
+          return { x, y, width, height, right, bottom, transform: getComputedStyle(element).transform };
+        };
+        return {
+          board: bounds(".board-plane"), rack: bounds(".hand-grid"), controls: bounds(".table-actions"),
+          tile: bounds(`[data-tile-id="${CSS.escape(id)}"]`),
+          confirm: bounds(".discard-confirm"), pause: bounds(".pause-btn"),
+          documentWidth: document.documentElement.scrollWidth,
+          documentHeight: document.documentElement.scrollHeight, scrollY: window.scrollY,
+        };
+      }, tileId);
+      expect(after.documentWidth).toBe(width);
+      if (noInsetLandscape) expect(after.documentHeight).toBeLessThanOrEqual(height + 1);
+      expect(after.scrollY).toBe(0);
+      expect(after.board.width).toBeGreaterThan(minBoardWidth);
+      expect(after.board.x).toBeGreaterThanOrEqual(insets[3]);
+      expect(after.board.right).toBeLessThan(after.controls.x);
+      expect(after.rack.y).toBeGreaterThan(after.board.bottom);
+      expect(after.rack.bottom).toBeLessThanOrEqual(height - insets[2]);
+      expect(after.tile).toMatchObject(before);
+      for (const target of [after.tile, after.confirm, after.pause]) {
+        expect(Math.min(target.width, target.height)).toBeGreaterThanOrEqual(44);
+        expect(target.transform).toBe("none");
+        expect(target.x).toBeGreaterThanOrEqual(insets[3]);
+        expect(target.y).toBeGreaterThanOrEqual(insets[0]);
+        expect(target.right).toBeLessThanOrEqual(width - insets[1]);
+        expect(target.bottom).toBeLessThanOrEqual(height - insets[2]);
+      }
+      composition.push({ viewport: [width, height], insets, ...after });
+      await page.screenshot({ path: testInfo.outputPath(`landscape-live-table-${width}${insets[0] ? "-insets" : ""}.png`) });
+      if (width !== layouts.at(-1)!.width) await tile.press("Escape");
+    }
+
+    const commit = composition.at(-1)!.confirm;
+    await page.touchscreen.tap(commit.x + commit.width / 2, commit.y + commit.height / 2);
+    await expect.poll(() => host.choices.length).toBe(sent + 1);
     const discard = host.choices.at(-1)!;
     if (discard.op !== "choose") throw new Error("Expected an authoritative discard choice.");
+    expect(discard.payload).toEqual({ roomId: decision.roomId, windowId: decisionWindow.windowId,
+      anchorGameRevision: decisionWindow.anchorGameRevision, optionId: option.optionId });
     await expect.poll(() => host.acks.get(discard.requestId)?.status).toBe("ok");
-    const committed = await host.waitFor(state => state.game?.window?.windowId !== discard.payload.windowId);
+    const committed = await host.waitFor(state => state.gameRevision > decision.gameRevision &&
+      state.game?.window?.windowId !== decisionWindow.windowId);
+    await expect(tile).toHaveCount(0);
     expect(host.state?.game?.handNumber).toBe(1);
-    expect(host.turnSeconds).toBeGreaterThanOrEqual(24);
-    expect(host.turnSeconds).toBeLessThanOrEqual(30);
+    const projectedTurnSeconds = Math.ceil((Date.parse(decisionWindow.deadlineUtc!) - Date.parse(decision.serverTimeUtc)) / 1000);
+    expect(projectedTurnSeconds).toBeGreaterThanOrEqual(24);
+    expect(projectedTurnSeconds).toBeLessThanOrEqual(30);
     await expect(page.locator(".wall-count")).not.toHaveText("");
-    await page.screenshot({ path: testInfo.outputPath("normal-live-table.png"), fullPage: true });
     await writeFile(testInfo.outputPath("live-decision.json"), JSON.stringify({
-      browser: browser.version(), projectedTurnSeconds: host.turnSeconds, revision: committed.gameRevision,
+      browser: browser.version(), projectedTurnSeconds, revision: committed.gameRevision, composition,
     }));
     await host.click("Settings");
     await host.click("Back to lobby");

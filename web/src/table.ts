@@ -1,5 +1,5 @@
 import { button, el, places, reconcile, text, wind } from "./dom";
-import type { Face, Game, GameSeat, Meld, Option, OptionKind, RoomSeat, Seat, Snapshot, Tile } from "./protocol";
+import type { Game, GameSeat, Meld, Option, OptionKind, RoomSeat, Seat, Snapshot, Tile } from "./protocol";
 import { faceName, tileFace, tileLabel } from "./tile";
 
 const meldNames = { chi: "Chi", peng: "Peng", gang: "Kong", bu: "Supplement" } as const;
@@ -11,6 +11,7 @@ const choiceOrder: OptionKind[] = ["hu", "reveal", "gang", "bu", "peng", "chi", 
 const windowNames = {
   turn: "Turn", opening: "Opening reveal", discard: "Claim window", kong: "Kong response", lastTile: "Last tile",
 } as const;
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
 function meldKey(meld: Meld, index: number): string {
   return `${index}:${meld.kind}:${meld.method ?? ""}:${meld.fromSeat ?? "_"}:${meld.tiles.join("/")}`;
@@ -43,13 +44,9 @@ function setMelds(parent: HTMLElement, melds: Meld[], dealer: Seat, local = fals
   });
 }
 
-function animate(node: HTMLElement): void {
-  if (document.documentElement.dataset.reducedMotion === "true" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  node.classList.add("arriving");
-  const finish = () => node.classList.remove("arriving");
-  node.addEventListener("animationend", finish, { once: true });
-  node.addEventListener("animationcancel", finish, { once: true });
-}
+export type TableCue = "draw" | "discard" | "call" | "turn" | "win" | "exhausted";
+
+const signed = (points: number) => points > 0 ? `+${points}` : points < 0 ? `−${-points}` : "0";
 
 interface Lane {
   name: HTMLElement;
@@ -61,6 +58,8 @@ interface Lane {
   river: HTMLElement;
   melds: HTMLElement;
   reveals: HTMLElement;
+  score: HTMLElement;
+  feedback: HTMLElement;
 }
 
 function lane(stage: HTMLElement, plane: HTMLElement, place: string): Lane {
@@ -75,11 +74,15 @@ function lane(stage: HTMLElement, plane: HTMLElement, place: string): Lane {
   const count = el("span", "sr-only");
   const melds = el("div", "edge-melds");
   const reveals = el("div", "edge-reveals");
-  label.append(wind, el("div", "seat-label-text", name, details, count), melds, reveals);
+  const score = el("span", "seat-score");
+  const feedback = el("span", "seat-feedback");
+  feedback.setAttribute("aria-hidden", "true");
+  feedback.hidden = true;
+  label.append(wind, el("div", "seat-label-text", name, details, count), score, feedback, melds, reveals);
   stage.append(label);
   plane.append(wall, backs, river);
   for (const element of [wall, backs]) element.setAttribute("aria-hidden", "true");
-  return { name, wind, details, label, wall, backs, river, melds, reveals };
+  return { name, wind, details, label, wall, backs, river, melds, reveals, score, feedback };
 }
 
 function blocks(parent: HTMLElement, count: number): void {
@@ -89,7 +92,7 @@ function blocks(parent: HTMLElement, count: number): void {
 
 function updateLane(
   lane: Lane, lobby: RoomSeat, game: GameSeat, self: Seat, dealer: Seat,
-  active: boolean, wall: number, latest: boolean, motion: boolean,
+  active: boolean, wall: number, latest: boolean,
 ): void {
   const own = lobby.seat === self;
   const direction = wind(lobby.seat, dealer);
@@ -101,20 +104,19 @@ function updateLane(
   const isDealer = lobby.seat === dealer;
   const presence = lobby.kind === "bot" ? " · Bot" : lobby.kind === "human" && !lobby.connected ? " · Away" : "";
   text(lane.details, `${isDealer ? "Dealer" : direction}${presence}`);
+  text(lane.score, game.total);
+  lane.score.setAttribute("aria-label", `${game.total} points`);
   lane.label.title = `${direction}${isDealer ? " · Dealer" : ""} · ${lobby.displayName ?? "Open seat"} · ${game.concealedCount} concealed · ${game.total} points`;
   lane.river.setAttribute("aria-label", `${direction} discards, oldest first`);
   blocks(lane.wall, wall);
   blocks(lane.backs, own ? 0 : game.concealedCount);
   if (!own) {
-    text(lane.details.nextElementSibling!, `${isDealer ? `, ${direction} wind` : ""}, ${game.concealedCount} concealed tiles, ${game.total} points`);
+    text(lane.details.nextElementSibling!, `${isDealer ? `, ${direction} wind` : ""}, ${game.concealedCount} concealed tiles`);
     setMelds(lane.melds, game.melds, dealer);
   }
   reconcile(lane.river, game.discards, (face, i) => `${i}:${face}`, face =>
-    el("li", "river-tile", tileLabel(face)), (node, _, i, fresh) => {
-    const last = i === game.discards.length - 1;
-    node.classList.toggle("last-discard", latest && last);
-    if (fresh && last && motion) animate(node);
-  });
+    el("li", "river-tile", tileLabel(face)), (node, _, i) =>
+    node.classList.toggle("last-discard", latest && i === game.discards.length - 1));
   reconcile(lane.reveals, game.revealedTiles, (face, i) => `${i}:${face}`, face => tileLabel(face));
 }
 
@@ -159,6 +161,8 @@ export class TableView {
   private readonly discard = button("Discard tile", "btn primary discard-confirm", () => this.confirm());
   private readonly resultButton: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
+  private readonly reduceMotion = matchMedia(reducedMotionQuery);
+  private readonly animations = new Set<Animation>();
   private state: Snapshot | null = null;
   private canAct = false;
   private selection: string | null = null;
@@ -195,6 +199,8 @@ export class TableView {
     const actions = el("div", "table-actions", this.hint, this.choices, this.discard, this.resultButton);
     this.hint.setAttribute("aria-live", "polite");
     this.root.append(status, this.stage, rack, actions);
+    this.reduceMotion.addEventListener("change", event => { if (event.matches) this.stopMotion(); });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this.stopMotion(); });
     rack.addEventListener("keydown", event => {
       if (event.key === "Escape" && this.selection) {
         this.selection = null;
@@ -224,10 +230,38 @@ export class TableView {
     return target;
   }
 
-  update(state: Snapshot, canAct: boolean, now: number, effect = false): void {
+  get motionEnabled(): boolean {
+    // WebKit can keep the subscribed list stale until the next media change event.
+    return !document.hidden && document.documentElement.dataset.reducedMotion !== "true" &&
+      !matchMedia(reducedMotionQuery).matches;
+  }
+
+  private animate(node: Element | null | undefined, entry: string, duration: number): void {
+    if (!node) return;
+    const motion = node.animate([{ opacity: .42, transform: entry }, { opacity: 1, transform: "none" }],
+      { duration, easing: "cubic-bezier(.2,.72,.24,1)" });
+    this.animations.add(motion);
+    const forget = () => this.animations.delete(motion);
+    void motion.finished.then(forget, forget);
+  }
+
+  private stopMotion(): void {
+    this.animations.forEach(motion => motion.cancel());
+    this.animations.clear();
+  }
+
+  update(state: Snapshot, canAct: boolean, now: number, effect = false): TableCue | undefined {
     const game = state.game;
     if (!game) return;
-    if (this.state?.roomId !== state.roomId || this.state?.game?.window?.windowId !== game.window?.windowId) this.selection = null;
+    const previous = this.state;
+    const changed = previous?.roomId !== state.roomId || previous.gameRevision !== state.gameRevision;
+    const live = effect && changed && !state.room.paused && !document.hidden;
+    const motion = live && this.motionEnabled;
+    const priorGame = live && previous?.roomId === state.roomId &&
+      previous.gameRevision + 1 === state.gameRevision && previous.game?.handNumber === game.handNumber ? previous.game : null;
+    const newSettlement = live && !!game.settlement && !priorGame?.settlement;
+    if (changed || state.room.paused || !this.motionEnabled) this.stopMotion();
+    if (previous?.roomId !== state.roomId || previous?.game?.window?.windowId !== game.window?.windowId) this.selection = null;
     this.state = state;
     this.canAct = canAct;
     const { self, room } = state;
@@ -247,31 +281,63 @@ export class TableView {
     this.pauseButton.disabled = !canAct;
     text(this.pauseButton, room.paused ? "Resume" : "Pause");
 
+    let discarded = false;
+    let called = false;
     this.lanes.forEach((lane, i) => {
       const seat = ((self.seat + i) % 4) as Seat;
       const lobby = room.seats.find(item => item.seat === seat);
       const table = game.seats.find(item => item.seat === seat);
       if (!lobby || !table) return;
+      const before = priorGame?.seats.find(item => item.seat === seat);
       const blocksLeft = Math.ceil(game.wallCount / 3);
       const count = Math.floor(blocksLeft / 4) + (seat < blocksLeft % 4 ? 1 : 0);
+      // An added-kong trigger uses the matching Peng and the drawn fourth copy,
+      // so no matching face can still be in the river during a robbery offer.
+      const pendingDiscard = game.phase === "claim" && trigger?.seat === seat &&
+        trigger.faces.length === 1 && trigger.faces[0] === table.discards.at(-1);
       updateLane(lane, lobby, table, self.seat, game.dealerSeat,
-        game.turnSeat === seat && game.phase === "turn", count, trigger?.seat === seat && game.window?.reason === "discard", effect);
+        game.turnSeat === seat && game.phase === "turn", count, pendingDiscard);
+      if (before && table.discards.length > before.discards.length) {
+        discarded = true;
+        if (motion) this.animate(lane.river.lastElementChild?.querySelector(".tile-face"), "translateY(5px)", 210);
+      }
       if (seat === self.seat) {
         setMelds(this.melds, table.melds, game.dealerSeat, true);
         this.melds.hidden = table.melds.length === 0;
+      }
+      const score = game.settlement?.seatResults.find(result => result.seat === seat);
+      const winner = game.settlement?.winners.find(result => result.seat === seat);
+      if (score) {
+        lane.feedback.hidden = false;
+        lane.feedback.dataset.kind = score.delta < 0 ? "loss" : "score";
+        const cause = winner?.winBy === "selfDraw" ? "Self-draw" : winner?.winBy === "robKong" ? "Rob kong" : winner ? "Hu" : "";
+        text(lane.feedback, `${cause ? `${cause} · ` : ""}${signed(score.delta)}`);
+        if (motion && newSettlement) this.animate(lane.feedback, "translateY(7px) scale(.9)", 420);
+      } else if (changed || room.paused) {
+        const meld = before && table.melds.find((item, index) => meldKey(item, index) !==
+          (before.melds[index] && meldKey(before.melds[index], index)));
+        const label = meld ? meldNames[meld.kind] : before && table.revealedTiles.length > before.revealedTiles.length ? "Reveal" : "";
+        lane.feedback.hidden = !label;
+        lane.feedback.dataset.kind = "call";
+        text(lane.feedback, label);
+        if (label) {
+          called = true;
+          if (motion) this.animate(lane.feedback, "translateY(5px) scale(.92)", 310);
+        }
       }
     });
 
     const ordered = self.hand.filter(tile => tile.tileId !== self.drawnTileId)
       .sort((a, b) => a.face.localeCompare(b.face) || a.tileId.localeCompare(b.tileId));
     const drawn = self.hand.find(tile => tile.tileId === self.drawnTileId);
+    const newDraw = live && !!drawn && drawn.tileId !== previous?.self.drawnTileId;
     if (drawn) ordered.push(drawn);
     text(this.handTitle, `Your hand · ${self.hand.length} concealed`);
     reconcile(this.hand, ordered, tile => tile.tileId, tile => this.tile(tile), (node, tile, _, fresh) => {
       const isDrawn = tile.tileId === self.drawnTileId;
       node.classList.toggle("is-drawn", isDrawn);
       node.setAttribute("aria-label", `${faceName(tile.face)}${isDrawn ? ", drawn tile" : ""}`);
-      if (fresh && isDrawn && effect) animate(node);
+      if (fresh && isDrawn && newDraw && motion) this.animate(node.firstElementChild, "translateX(6px)", 220);
     });
     const nonDiscards = self.legalOptions.filter(option => option.kind !== "discard")
       .sort((a, b) => choiceOrder.indexOf(a.kind) - choiceOrder.indexOf(b.kind));
@@ -279,6 +345,11 @@ export class TableView {
     this.resultButton.hidden = !game.settlement;
     text(this.resultButton, room.status === "complete" ? "Match results" : "Hand results");
     this.tick(now, true);
+    if (newSettlement) return game.settlement!.reason === "win" ? "win" : "exhausted";
+    if (called) return "call";
+    if (newDraw) return "draw";
+    if (discarded) return "discard";
+    if (live && game.turnSeat === self.seat && game.turnSeat !== priorGame?.turnSeat) return "turn";
   }
 
   private phaseText(game: Game, seats: RoomSeat[], self: Seat, paused: boolean): string {
@@ -313,7 +384,10 @@ export class TableView {
 
   clearEffects(): void {
     this.selection = null;
-    this.root.querySelectorAll(".arriving").forEach(node => node.classList.remove("arriving"));
+    this.stopMotion();
+    for (const { feedback } of this.lanes) {
+      if (feedback.dataset.kind === "call") feedback.hidden = true;
+    }
     this.paintActions();
   }
 
@@ -333,7 +407,7 @@ export class TableView {
     let message: string;
     if (game?.settlement) message = room?.status === "complete" ? "Match finished. See the final scores." : "Review the scores, then start the next hand.";
     else if (room?.paused) message = "Decisions are frozen while the table is paused.";
-    else if (this.discardOptions.size) message = selected ? "Confirm below to discard the selected tile." : "Select a tile, then confirm your discard.";
+    else if (this.discardOptions.size) message = selected ? "Confirm your discard." : "Select a tile, then confirm.";
     else if (this.options.length) message = "Choose one of the available actions.";
     else message = game?.phase === "claim" ? "Waiting for eligible players to respond." : "Waiting for the next turn.";
     text(this.hint, message);
