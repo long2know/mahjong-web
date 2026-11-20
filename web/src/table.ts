@@ -12,6 +12,7 @@ const choiceOrder: OptionKind[] = ["hu", "reveal", "gang", "bu", "peng", "chi", 
 const windowNames = {
   turn: "Turn", opening: "Opening reveal", discard: "Claim window", kong: "Kong response", lastTile: "Last tile",
 } as const;
+const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
 function meldKey(meld: Meld, index: number): string {
   return `${index}:${meld.kind}:${meld.method ?? ""}:${meld.fromSeat ?? "_"}:${meld.tiles.join("/")}`;
@@ -162,7 +163,7 @@ export class TableView {
   private readonly discard = button("Discard tile", "btn primary discard-confirm", () => this.confirm());
   private readonly resultButton: HTMLButtonElement;
   private readonly pauseButton: HTMLButtonElement;
-  private readonly reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  private readonly reduceMotion = matchMedia(reducedMotionQuery);
   private readonly effects = new TableEffects();
   private needsVisibleBaseline = false;
   private state: Snapshot | null = null;
@@ -201,12 +202,12 @@ export class TableView {
     const actions = el("div", "table-actions", this.hint, this.choices, this.discard, this.resultButton);
     this.hint.setAttribute("aria-live", "polite");
     this.root.append(status, this.stage, rack, actions, this.effects.root);
-    const stopIfStill = () => {
-      if (this.motionEnabled) return;
+    const stopMotion = () => {
       this.effects.clear();
       this.hooks.motionStopped?.();
     };
-    this.reduceMotion.addEventListener("change", stopIfStill);
+    this.reduceMotion.addEventListener("change", event => { if (event.matches) stopMotion(); });
+    const stopIfStill = () => { if (!this.motionEnabled) stopMotion(); };
     new MutationObserver(stopIfStill).observe(document.documentElement, {
       attributes: true, attributeFilter: ["data-reduced-motion"],
     });
@@ -244,7 +245,9 @@ export class TableView {
   }
 
   get motionEnabled(): boolean {
-    return !document.hidden && !this.reduceMotion.matches && document.documentElement.dataset.reducedMotion !== "true";
+    // WebKit can keep the subscribed list stale until the next media change event.
+    return !document.hidden && document.documentElement.dataset.reducedMotion !== "true" &&
+      !matchMedia(reducedMotionQuery).matches;
   }
 
   update(state: Snapshot, canAct: boolean, now: number, effect = false): TableCue | undefined {
