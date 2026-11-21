@@ -68,7 +68,12 @@ test("a mounted guest can share an invite, start a live hand, and reload into th
     await tap("Add bot to West seat");
     await tap("Add bot to North seat");
     await tap("Mark ready");
-    await visitor.getByRole("button", { name: "Mark ready" }).tap();
+    // The visitor must act on the room revision that includes the host's ready command.
+    const hostSeat = visitor.getByRole("article").filter({ has: visitor.getByRole("heading", { name: "Mounted Host", exact: true }) });
+    await expect(hostSeat.getByText(/ · Ready$/)).toBeVisible();
+    await visitor.getByRole("button", { name: "Mark ready", exact: true }).tap();
+    await expect(visitor.getByRole("button", { name: "Not ready", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Start match", exact: true })).toBeEnabled();
     await tap("Start match");
     await expect.poll(() => snapshot?.room.status).toBe("playing");
     expect(snapshot?.game?.handNumber).toBe(1);
