@@ -29,7 +29,7 @@ If GHCR denies the job's push, the maintainer of the existing package linked to 
 
 ### Keep an existing `/mahjong` route and bind mount
 
-This Compose example keeps the host mount and uses a fresh subdirectory within it for the new app. Use a verified image revision that includes `BASE_URL` support. Before starting, create `${DOCKER_DATA}/games/mahjong/data/mahjong-web` as an empty, private directory. The container user (UID `1654`) needs traversal through the mounted parent and write access to the new directory. Do not overwrite the old database or recursively change permissions on existing data.
+Use a verified image revision that includes `BASE_URL` support. If replacing Autotable, stop it and back up its data before reusing the host bind mount. Leave `Mahjong__DataDirectory` unset: the image uses `/data` and stores `mahjong.db` and `keys/` directly in the mount. Before starting the new app, verify the directory is private, accessible and writable by container UID `1654`, and either empty or contains only intended state from the new app. Keep the legacy backup intact; this is not a migration. If keeping both apps, use separate data directories so neither opens or overwrites the other's files.
 
 ```yaml
 services:
@@ -37,26 +37,31 @@ services:
     image: ghcr.io/long2know/mahjong-web:latest
     pull_policy: always
     ports:
-      - "127.0.0.1:8911:8080"
+      - "127.0.0.1:${MAHJONG_HOST_PORT:-8911}:8080"
     environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
       BASE_URL: /mahjong
-      Mahjong__DataDirectory: /data/mahjong-web
       Mahjong__PublicOrigin: https://games.example.test
       # Mahjong__TrustedProxies__0: set to the exact peer IP if it isn't loopback.
-      # Legacy SQLite connection string and database provider: not used.
-      # Authentication__JwtSigningKeys__0: not used.
-      # Legacy CORS settings: not used.
+      # Autotable settings below are not used by this image:
+      # Persistence__Provider: sqlite
+      # ConnectionStrings__Sqlite: Data Source=/data/legacy.sqlite
+      # Authentication__JwtSigningKeys__0: <legacy signing key>
+      # Cors__AllowedOrigins__0: https://games.example.test
     volumes:
       - ${DOCKER_DATA}/games/mahjong/data:/data
 ```
 
-Replace `https://games.example.test` with your existing scheme and hostname, **without** `/mahjong`. Point the existing TLS proxy to the loopback port above, and configure it as described below. Check `curl -fsS http://127.0.0.1:8911/mahjong/health/ready` and `curl -fsS http://127.0.0.1:8911/mahjong/api/version` on the host; then open `https://games.example.test/mahjong/` in a browser.
+The explicit ASP.NET Core port and environment match the image defaults. The port mapping binds only to loopback by default for this example. You can keep `"${MAHJONG_HOST_PORT:-8911}:8080"` without that restriction if your firewall already limits access to the Docker-published port to the trusted proxy. Replace `https://games.example.test` with your existing origin, **without** `/mahjong`. Point the TLS proxy at the actual host port, or keep `http://mahjong:8080` if it connects over a shared Docker network. At the default host port, check `curl -fsS http://127.0.0.1:8911/mahjong/health/ready` and `curl -fsS http://127.0.0.1:8911/mahjong/api/version`; then open the public `/mahjong/` URL in a browser.
 
 ## HTTPS for other devices
 
 HTTP is for loopback development only. Terminate TLS at a trusted reverse proxy and keep Kestrel inaccessible to clients except through that proxy. Export `Mahjong__AllowHttpLoopbackOrigin=false`, `Mahjong__PublicOrigin` and, if the proxy peer isn't loopback, `Mahjong__TrustedProxies__0` before creating the Compose service. Docker port forwarding can make a host proxy appear to originate from a bridge address: trust only the actual, expected peer, never a wildcard or all container networks. Keep the upstream inaccessible to untrusted peers. Only one forwarded hop is supported.
 
-For `BASE_URL=/mahjong`, **preserve the prefix** upstream unless your existing proxy needs to strip it. Route only `/mahjong` and `/mahjong/...`, not `/mahjong-other`. Forward `/mahjong/...` unchanged and remove any client-supplied `X-Forwarded-Prefix`. The app redirects `GET /mahjong` to `/mahjong/` with the original query string. Invite codes use URL fragments, which the browser retains across that redirect without sending them to the server.
+Replace any legacy `ReverseProxy__KnownProxies__0` setting with `Mahjong__TrustedProxies__0`, using the same exact immediate proxy peer IP as seen by Kestrel.
+
+For `BASE_URL=/mahjong`, **preserve the prefix** upstream unless your existing proxy needs to strip it. An existing path-preserving `proxy_pass http://mahjong:8080;` (no trailing slash) can stay in place. Route only `/mahjong` and `/mahjong/...`, not `/mahjong-other`. Forward `/mahjong/...` unchanged and remove any client-supplied `X-Forwarded-Prefix`. The app redirects `GET /mahjong` to `/mahjong/` with the original query string. Invite codes use URL fragments, which the browser retains across that redirect without sending them to the server.
 
 For example, in Nginx's `http` context with a certificate for the existing hostname (use the service's actual loopback port):
 
