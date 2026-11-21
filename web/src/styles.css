@@ -600,14 +600,20 @@ h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 500; line-
   .river--near { top: 82%; }
   .wall--near { top: 90%; }
   .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .turnbar {
-    display: grid; grid-template: "turn tools" auto "info info" auto / minmax(0, 1fr) auto;
+    display: grid; grid-template: "turn tools" auto "info info" auto / minmax(3rem, 1fr) minmax(0, max-content);
   }
   .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .turn-ident { display: contents; }
   .turn-title { grid-area: turn; }
   .game-info { grid-area: info; }
   .turn-tools { grid-area: tools; flex: none; }
   .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .turn-tools {
-    flex-wrap: wrap; justify-content: flex-end; max-width: 110px;
+    flex-wrap: wrap; justify-content: flex-end; gap: 2px;
+  }
+  .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .timer {
+    padding-inline: 3px; white-space: normal;
+  }
+  .play:not(:has(.local-melds > :nth-child(3), .local-melds > .meld-added)) .pause-btn {
+    min-width: 44px; padding-inline: 4px;
   }
   .table-actions .discard-confirm { padding-inline: 5px; font-size: .875rem; }
   .rack { column-gap: 4px; }

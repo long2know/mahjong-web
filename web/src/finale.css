@@ -86,20 +86,35 @@
   .modal:has(.winning-hands) {
     width: min(calc(100vw - var(--safe-l) - var(--safe-r) - 24px), 680px);
   }
-  .modal:has(.winning-hands) .modal-head { padding-block: 3px; }
-  .modal:has(.winning-hands) .modal-content > .form {
-    grid-template-columns: minmax(148px, .32fr) minmax(0, 1fr);
+  .modal:has(.winning-hands) .modal-head { padding-block: 2px; }
+  .modal:has(.winning-hands) .modal-content { padding: 6px 10px; }
+  .modal-content > .form:has(> .winning-hands) {
+    grid-template-columns: minmax(132px, .28fr) minmax(0, 1fr);
     align-items: start;
-    gap: 7px 10px;
+    gap: 3px 8px;
   }
-  .modal:has(.winning-hands) .modal-content > .form > :is(.result-section, .note, .row-actions) {
+  .modal-content > .form:has(> .winning-hands) > :is(.result-section, .note, .row-actions) {
     grid-column: 1 / -1;
   }
-  .modal:has(.winning-hands) .scoreboard { font-size: .83rem; }
-  .modal:has(.winning-hands) .scoreboard :is(th, td) { padding: 4px 3px; }
+  .modal-content > .form:has(> .winning-hands) > :is(.detail, .note) {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+  /* Keep the next-hand controls beside the hands unless more scoring details precede them. */
+  .modal-content > .form:has(> .winning-hands):has(> .note):not(:has(> .result-section)) > :is(.note, .row-actions) {
+    grid-column: 1;
+  }
+  .modal-content > .form:has(> .note):not(:has(> .result-section)) > .winning-hands {
+    grid-column: 2;
+    grid-row: 2 / span 3;
+  }
+  .modal:has(.winning-hands) .scoreboard { font-size: .83rem; line-height: 1.2; }
+  .modal:has(.winning-hands) .scoreboard :is(th, td) { padding: 2px 3px; }
   .winning-hands.form { gap: 5px; }
-  .modal .winner { padding: 3px 6px; gap: 3px; }
-  .modal .winner h3 { font-size: .96rem; }
+  .modal .winner { padding: 3px 5px; gap: 3px; }
+  .modal .winner h3 { font-size: .96rem; overflow-wrap: anywhere; }
   .modal .winner .tile-target { width: 22px; height: 30px; }
-  .winner .meld-group { padding-inline: 4px; }
+  .winner > .result-tiles { column-gap: 3px; }
+  .winner .meld-group { padding-inline: 3px; }
+  .winner .meld-group .result-tiles { column-gap: 0; }
 }

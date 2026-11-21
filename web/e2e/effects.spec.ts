@@ -644,11 +644,15 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
       first.game!.seats[i].discards = seat.discards;
     }
     const wire = await open(page, first, false, true);
-    if (width === 740) await page.evaluate(() => {
-      for (const [edge, inset] of [["t", 10], ["r", 22], ["b", 13], ["l", 25]]) {
-        document.documentElement.style.setProperty(`--safe-${edge}`, `${inset}px`);
-      }
-    });
+    if (width === 740) {
+      await page.evaluate(() => {
+        for (const [edge, inset] of [["t", 10], ["r", 22], ["b", 13], ["l", 25]]) {
+          document.documentElement.style.setProperty(`--safe-${edge}`, `${inset}px`);
+        }
+      });
+      // Exercise wider host font metrics without depending on installed fonts.
+      await page.addStyleTag({ content: ".modal .winner .meld-caption { letter-spacing: .08em; }" });
+    }
     await expect(page.locator(".seat-actor")).toHaveCount(4);
     await expect(page.locator(".seat-label[data-seat='1'] .tile-back")).toHaveCount(4);
     await expect(page.locator(finale)).toHaveCount(0);
@@ -726,13 +730,20 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
     }
     await expect(results.getByRole("img", { name: "6 dots" })).toHaveCount(0);
     await expect(results.getByRole("img", { name: "Concealed tile" })).toHaveCount(0);
-    if (width === 740) await expect(results.locator(".winning-hands")).toBeInViewport({ ratio: .95 });
+    if (width === 740) await expect(results.locator(".winning-hands")).toBeInViewport({ ratio: 1 });
     expect(await results.evaluate(node => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
     await finishCast(page);
     await expect(art).toHaveCount(0);
     await page.locator(layer).evaluate(root => root.getAnimations({ subtree: true }).forEach(animation => animation.finish()));
     await page.screenshot({ path: testInfo.outputPath("03-official-winning-hands.png") });
     const next = results.getByRole("button", { name: "Next hand" });
+    if (width === 740) {
+      await expect(next).toBeInViewport({ ratio: 1 });
+      for (const button of [next, results.getByRole("button", { name: "Close dialog" })]) {
+        const box = (await button.boundingBox())!;
+        expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
+      }
+    }
     await next.focus();
     await expect(next).toBeFocused();
     await page.keyboard.press("Enter");

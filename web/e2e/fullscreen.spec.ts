@@ -96,14 +96,26 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
     await page.setViewportSize({ width, height });
     await openTable(page);
     await fullscreenFixture(page, true);
-    if (width === 740) await page.evaluate(() => {
-      for (const [key, side] of [["t", 10], ["r", 22], ["b", 13], ["l", 25]]) {
-        document.documentElement.style.setProperty(`--safe-${key}`, `${side}px`);
-      }
-    });
+    if (width === 740) {
+      await page.evaluate(() => {
+        for (const [key, side] of [["t", 10], ["r", 22], ["b", 13], ["l", 25]]) {
+          document.documentElement.style.setProperty(`--safe-${key}`, `${side}px`);
+        }
+      });
+      // Reproduce the wider clock and button text without depending on runner fonts.
+      await page.addStyleTag({ content: ".turn-tools > * { letter-spacing: .12em; }" });
+      await expect(page.getByRole("timer")).toHaveText(/^\d{3}s$/);
+    }
     expect(requests).not.toContain("/src/fullscreen.ts");
     const before = await layout(page);
     expect(before.root).toEqual([width, height, 0, 0]);
+    if (width === 740) {
+      const pause = page.getByRole("button", { name: "Pause" });
+      const target = (await pause.boundingBox())!;
+      expect(Math.min(target.width, target.height)).toBeGreaterThanOrEqual(44);
+      expect(target.x + target.width).toBeLessThanOrEqual(width - 22);
+      await pause.tap({ trial: true });
+    }
 
     const settings = page.getByRole("button", { name: "Settings" });
     await settings.press("Enter");
