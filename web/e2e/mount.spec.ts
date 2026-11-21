@@ -100,8 +100,7 @@ test("a mounted guest can share an invite, start a live hand, and reload into th
     await expect(page).toHaveURL(nested.href);
     const guest: Guest = await (await resume).json();
     expect(guest).toMatchObject({ displayName: "Mounted Host", resumeRoomId: roomId });
-    await expect.poll(() => snapshot?.self.seat).toBe(seat);
-    expect(snapshot?.roomId).toBe(roomId);
+    await expect.poll(() => ({ roomId: snapshot?.roomId, seat: snapshot?.self.seat })).toEqual({ roomId, seat });
     await expect(page.locator(".hand-tile").first()).toBeVisible();
     await expect(page.locator(online)).toBeVisible();
     for (const route of ["api/guest", "api/profile", "api/rooms"]) {
