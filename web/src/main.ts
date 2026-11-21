@@ -2,6 +2,7 @@ import "./styles.css";
 import { LanternAudio } from "./audio";
 import { Modal } from "./dialog";
 import { button, el, icon, text } from "./dom";
+import { appPath } from "./paths";
 import { api, HttpError } from "./protocol";
 import type { Action, Command, Guest, Preferences, Snapshot } from "./protocol";
 import { ChatPanel, HomeScreen, WaitingRoom, field, iconButton, resultsContent, rulesContent, submit, toggle, nameField } from "./screens";
@@ -399,7 +400,7 @@ class LanternTable {
   private openInvite(): void {
     const code = this.session.snapshot?.self.inviteCode;
     if (!code) return;
-    const link = new URL("/", location.origin);
+    const link = new URL(appPath, location.origin);
     link.hash = new URLSearchParams({ invite: code }).toString();
     const input = el("input");
     input.readOnly = true;

@@ -1,20 +1,23 @@
 using System.Net;
+using System.Text.RegularExpressions;
 
 namespace Mahjong.Server;
 
-internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IPAddress[] TrustedProxies,
+internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IPAddress[] TrustedProxies, PathString PathBase,
     TimeSpan TurnLimit, TimeSpan ClaimLimit, TimeSpan BotDelay, TimeSpan PauseLimit, TimeSpan LeaseLimit,
     TimeSpan TickInterval, TimeSpan PruneInterval, TimeSpan TestClockOffset,
     bool AllowDevelopmentHttp, bool AllowHttpLoopbackOrigin)
 {
     public const int MessageLimit = 16 * 1024;
     public static readonly TimeSpan RoomIdleLimit = TimeSpan.FromHours(24);
+    public string BaseHref => PathBase.Value + "/";
 
     public static ServerOptions Read(IConfiguration config, IWebHostEnvironment environment)
     {
         foreach (var key in new[] { "Mahjong:PathBase", "PathBase", "ASPNETCORE_PATHBASE" })
             if (config[key] is { Length: > 0 } path && path != "/")
-                throw new InvalidOperationException("Path prefixes are not supported; serve Mahjong at the origin root.");
+                throw new InvalidOperationException($"Use BASE_URL instead of {key} to configure the path prefix.");
+        var pathBase = ReadPathBase(config["BASE_URL"]);
 
         var defaultRoot = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (defaultRoot.Length == 0)
@@ -36,7 +39,7 @@ internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IP
                 : throw new InvalidOperationException("Mahjong:TrustedProxies entries must be explicit IP addresses."))
             .ToArray();
 
-        return new ServerOptions(Path.GetFullPath(directory), origin, proxies,
+        return new ServerOptions(Path.GetFullPath(directory), origin, proxies, pathBase,
             TimeSpan.FromSeconds(ReadInt("TurnSeconds", 30, 1, 120)),
             TimeSpan.FromSeconds(ReadInt("ClaimSeconds", 8, 1, 30)),
             TimeSpan.FromMilliseconds(ReadInt("BotDelayMilliseconds", 700, 10, 5000)),
@@ -54,6 +57,16 @@ internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IP
             return int.TryParse(raw, out var number) && number >= minimum && number <= maximum
                 ? number : throw new InvalidOperationException($"Mahjong:Testing:{key} must be in [{minimum}, {maximum}].");
         }
+    }
+
+    private static PathString ReadPathBase(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || value == "/") return PathString.Empty;
+        if (!Regex.IsMatch(value, @"\A(?:/[a-zA-Z0-9._~-]+)+/?\z", RegexOptions.CultureInvariant)
+            || value.Split('/').Any(segment => segment is "." or ".."))
+            throw new InvalidOperationException(
+                "BASE_URL must be / or a path such as /mahjong, with unescaped URL-safe segments and no origin, query, or fragment.");
+        return new PathString(value.TrimEnd('/'));
     }
 
     public static bool TryOrigin(string raw, out Uri? origin)

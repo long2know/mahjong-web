@@ -1,6 +1,6 @@
 # Mahjong web protocol v1
 
-Hosted at origin root. Wire names below are exact: camelCase JSON, UTF-8 text WebSocket messages, UTC RFC 3339 timestamps (`Z`), and nonnegative JS-safe integer revisions. No state/delta inference from a command ack; only snapshots replace rendered state.
+Paths below are relative to the app root. With `BASE_URL=/mahjong`, use `/mahjong/api/guest`, `/mahjong/ws`, and so forth; the browser's `Origin` remains scheme, host and port only. Wire names below are exact: camelCase JSON, UTF-8 text WebSocket messages, UTC RFC 3339 timestamps (`Z`), and nonnegative JS-safe integer revisions. No state/delta inference from a command ack; only snapshots replace rendered state.
 
 ## HTTP
 

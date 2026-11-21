@@ -1,3 +1,5 @@
+import { appPath } from "./paths";
+
 export type Seat = 0 | 1 | 2 | 3;
 export type Suit = "b" | "c" | "d";
 export type Rank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
@@ -231,7 +233,7 @@ export class HttpError extends Error {
 }
 
 async function json<T>(path: string, method: "POST" | "PATCH" | "GET", data?: object): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(appPath + path, {
     method, cache: "no-store", credentials: "same-origin", signal: AbortSignal.timeout(8000),
     ...(data ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) } : {}),
   });
@@ -243,8 +245,8 @@ async function json<T>(path: string, method: "POST" | "PATCH" | "GET", data?: ob
 }
 
 export const api = {
-  guest: () => json<Guest>("/api/guest", "POST", {}),
+  guest: () => json<Guest>("api/guest", "POST", {}),
   profile: (update: { displayName?: string; preferences?: Preferences }) =>
-    json<Guest>("/api/profile", "PATCH", update),
-  rooms: () => json<{ rooms: PublicRoom[] }>("/api/rooms", "GET"),
+    json<Guest>("api/profile", "PATCH", update),
+  rooms: () => json<{ rooms: PublicRoom[] }>("api/rooms", "GET"),
 };

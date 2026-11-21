@@ -16,7 +16,9 @@ docker run -d --name lantern-table --restart unless-stopped --pull=always --plat
   ghcr.io/long2know/mahjong-web:latest
 ```
 
-Open [http://127.0.0.1:8911](http://127.0.0.1:8911); change `8911` if needed. No JWT or app credentials are required: the browser gets a guest cookie. Stop with `docker stop lantern-table` to keep the data. Use the [HTTPS runbook](docs/operations.md#https-for-other-devices) for access from other devices; serve the app at the root of its own origin.
+Open [http://127.0.0.1:8911](http://127.0.0.1:8911); change `8911` if needed. No JWT, SQLite connection string, or app credentials are required: the browser gets a protected guest cookie, backed by SQLite and a key ring under `/data`. Stop with `docker stop lantern-table` to keep the data.
+
+To keep an existing `/mahjong` route, start a revision that supports mounts with `--env BASE_URL=/mahjong` and open `http://127.0.0.1:8911/mahjong/`. See the [published Compose example](docs/operations.md#keep-an-existing-mahjong-route-and-bind-mount) for keeping the existing bind mount without reusing the legacy database, and the [HTTPS proxy contract](docs/operations.md#https-for-other-devices).
 
 ## Run from source
 
@@ -38,7 +40,7 @@ With Docker Engine 28 or newer and the Compose plugin, build and start from the 
 SOURCE_COMMIT="$(git rev-parse HEAD)" docker compose up --build -d --wait
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080). Stop with `docker compose down`; it keeps the named data volume. Do not use `down -v` to stop the app. No separate database, Redis, .NET SDK, or Node process is needed at runtime.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). To use a subpath, set `BASE_URL=/mahjong` when creating the service and open `/mahjong/` on that origin; the same built image works at either path. Stop with `docker compose down`; it keeps the named data volume. Do not use `down -v` to stop the app. No separate database, Redis, .NET SDK, or Node process is needed at runtime.
 
 See the [operations runbook](docs/operations.md) for HTTPS, ports, update and rollback, backup and restore, and build verification.
 

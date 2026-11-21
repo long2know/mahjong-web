@@ -10,10 +10,13 @@ namespace Mahjong.Server.Tests;
 
 public sealed class RealtimeTests
 {
-    [Fact]
-    public async Task ServesBuiltClientAtRootWithSpaFallbackAndAssetCaching()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("/")]
+    public async Task ServesBuiltClientAtRootWithSpaFallbackAndAssetCaching(string? baseUrl)
     {
         await using var server = new Kestrel();
+        if (baseUrl is not null) server.WithSetting("BASE_URL", baseUrl);
         await server.StartAsync();
         var guest = new User(server);
         using var root = await guest.Request(HttpMethod.Get, "/");
@@ -21,6 +24,7 @@ public sealed class RealtimeTests
         Assert.Equal("text/html", root.Content.Headers.ContentType?.MediaType);
         Assert.True(root.Headers.CacheControl?.NoCache);
         var html = await root.Content.ReadAsStringAsync();
+        Assert.Contains("data-base=\"/\"", html);
         var script = Regex.Match(html, "/assets/[^\"']+\\.js");
         Assert.True(script.Success, "Root must contain a script from the built client.");
 
@@ -80,7 +84,7 @@ public sealed class RealtimeTests
             Assert.Contains("httponly", cookie);
             Assert.Contains("samesite=lax", cookie);
             Assert.Contains("max-age=2592000", cookie);
-            Assert.Contains("path=/", cookie);
+            Assert.Contains("path=/", cookie.Split(';').Select(attribute => attribute.Trim()));
         }
         await Error(await guest.Request(HttpMethod.Get, "/ws", includeOrigin: false), HttpStatusCode.Forbidden, "forbidden");
         await Error(await guest.Request(HttpMethod.Patch, "/api/profile", new { displayName = "not accepted" },

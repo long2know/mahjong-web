@@ -62,18 +62,13 @@ builder.Services.AddRateLimiter(rate =>
 });
 
 await using var app = builder.Build();
+var shell = ReadShell(options.BaseHref);
 await app.Services.GetRequiredService<Rooms>().InitializeAsync(app.Lifetime.ApplicationStopping);
 
-app.UseForwardedHeaders();
+AppMount.Use(app, options);
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.XContentTypeOptions = "nosniff";
     if (IsApi(context.Request.Path)) context.Response.Headers.CacheControl = "no-store";
-    if (context.Request.PathBase.HasValue && context.Request.PathBase.Value != "/")
-    {
-        await HttpApi.Error(400, "invalid_request").ExecuteAsync(context);
-        return;
-    }
     await next(context);
 });
 var staticFiles = new StaticFileOptions
@@ -109,8 +104,30 @@ app.Map("/api/{**path}", () => HttpApi.Error(404, "invalid_request"));
 app.Map("/health/{**path}", () => HttpApi.Error(404, "invalid_request"));
 app.Map("/ws/{**path}", () => HttpApi.Error(404, "invalid_request"));
 app.Map("/assets/{**path}", () => Results.NotFound());
-app.MapFallbackToFile("index.html", staticFiles);
+string[] shellMethods = [HttpMethods.Get, HttpMethods.Head];
+app.MapMethods("/index.html", shellMethods, ClientShell);
+app.MapFallback(ClientShell).WithMetadata(new HttpMethodMetadata(shellMethods));
 await app.RunAsync();
+
+IResult ClientShell(HttpContext context)
+{
+    if (shell is null) return Results.NotFound();
+    context.Response.Headers.CacheControl = "no-cache";
+    return Results.Content(shell, "text/html; charset=utf-8");
+}
+
+static string? ReadShell(string baseHref)
+{
+    var path = Path.Combine(AppContext.BaseDirectory, "index.html");
+    if (!File.Exists(path)) return null;
+    var html = File.ReadAllText(path);
+    const string marker = "data-base=\"/\"";
+    if (!html.Contains(marker, StringComparison.Ordinal))
+        throw new InvalidOperationException("The built client index.html is missing its data-base marker.");
+    // Vite's entry URLs must resolve from the mount even on a nested SPA URL.
+    return html.Replace(marker, $"data-base=\"{baseHref}\"", StringComparison.Ordinal)
+        .Replace("\"./assets/", $"\"{baseHref}assets/", StringComparison.Ordinal);
+}
 
 static bool IsApi(PathString path) => path.StartsWithSegments("/api")
     || path.StartsWithSegments("/health") || path.StartsWithSegments("/ws");

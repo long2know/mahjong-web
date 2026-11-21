@@ -22,7 +22,7 @@ RUN dotnet publish src/Mahjong.Server/Mahjong.Server.csproj -c Release --no-rest
       -p:UseAppHost=false -p:ContinuousIntegrationBuild=true \
       -p:Version="$BUILD_VERSION" -p:InformationalVersion="$BUILD_VERSION+$SOURCE_COMMIT" \
       -p:IncludeSourceRevisionInInformationalVersion=false \
-    && test -s /out/wwwroot/index.html
+    && test -s /out/index.html
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.15-noble@sha256:12b1135f5f8b3c0a214f2a680ff2033dff4f684f445d6c697d9524ceeb303586 AS runtime
 ARG BUILD_VERSION=0.1.0
@@ -39,5 +39,5 @@ COPY --from=publish /out/ ./
 USER $APP_UID
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=3 \
-  CMD ["bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3; IFS=' ' read -r proto status rest <&3; test \"$status\" = 200"]
+  CMD ["bash", "-ec", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET %s/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' \"${BASE_URL%/}\" >&3; IFS=' ' read -r proto status rest <&3; test \"$status\" = 200"]
 ENTRYPOINT ["dotnet", "Mahjong.Server.dll"]

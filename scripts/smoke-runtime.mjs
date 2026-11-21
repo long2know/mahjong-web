@@ -5,23 +5,30 @@ import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
+import { gzipSync } from 'node:zlib';
 
 const [phase, url, appVersion, commitSha, stateFile] = process.argv.slice(2);
 assert(['seed', 'resume'].includes(phase) && url && appVersion && commitSha && stateFile,
-  'Usage: node scripts/smoke-runtime.mjs {seed|resume} ORIGIN VERSION COMMIT STATE_FILE');
+  'Usage: node scripts/smoke-runtime.mjs {seed|resume} APP_URL VERSION COMMIT STATE_FILE');
 assert(/^(?:[0-9a-f]{40}|unknown)$/.test(commitSha), 'Expected a full Git SHA or unknown');
-const origin = new URL(url).origin;
-assert(url === origin && /^https?:/.test(origin), 'ORIGIN must be an HTTP(S) origin with no path');
+const { origin, pathname } = new URL(url);
+assert(/^https?:/.test(origin) && pathname.endsWith('/') && (url === origin || url === origin + pathname),
+  'APP_URL must be an HTTP(S) origin or an app URL with a trailing slash, without a query or fragment');
+const mount = pathname.slice(0, -1);
 const name = 'Infra Smoke Guest';
 const defaults = { sound: true, music: false, volume: 0.7, reducedMotion: false };
 const preferences = { sound: false, music: true, volume: 0.25, reducedMotion: true };
 
 function get(path, init) {
-  return fetch(new URL(path, origin), {
+  return fetch(appUrl(path), {
     redirect: 'error',
     signal: AbortSignal.timeout(5000),
     ...init,
   });
+}
+
+function appUrl(path) {
+  return new URL(mount + path, origin);
 }
 
 async function json(path, init) {
@@ -54,17 +61,25 @@ async function checkApplication() {
   assert.match(root.headers.get('content-type') ?? '', /^text\/html\b/i, 'SPA root');
   assert.match(root.headers.get('cache-control') ?? '', /\b(?:no-cache|no-store)\b/i, 'SPA root must revalidate');
   const html = await root.text();
-  const assets = [...html.matchAll(/\b(?:src|href)=(["'])(\/assets\/[^"'?#]+\.(js|css))\1/g)];
-  assert(assets.some(([, , , extension]) => extension === 'js'), 'SPA is missing a root-scoped JS bundle');
-  assert(assets.some(([, , , extension]) => extension === 'css'), 'SPA is missing a root-scoped CSS bundle');
-  for (const [, , path, extension] of assets) {
-    const asset = await get(path);
-    assert.equal(asset.status, 200, path);
-    assert.match(asset.headers.get('content-type') ?? '',
-      extension === 'js' ? /^(?:application|text)\/javascript\b/i : /^text\/css\b/i, path);
-    assert.match(asset.headers.get('cache-control') ?? '', /\bimmutable\b/i, `Hashed cache policy: ${path}`);
-    assert((await asset.arrayBuffer()).byteLength > 0, `${path} was empty`);
+  assert(html.includes(`data-base="${pathname}"`), `SPA is not configured for ${pathname}`);
+  const assets = [...html.matchAll(/\b(?:src|href)=(["'])([^"'?#]+\.(js|css|svg))\1/g)];
+  const types = { js: /^(application|text)\/javascript\b/i, css: /^text\/css\b/i, svg: /^image\/svg\+xml\b/i };
+  for (const extension of Object.keys(types)) {
+    assert(assets.some(([, , , actual]) => actual === extension), `SPA is missing a ${extension} entry asset`);
   }
+  let coldGzipBytes = gzipSync(html).byteLength;
+  for (const [, , path, extension] of assets) {
+    assert(path.startsWith(`${mount}/assets/`), `Asset ${path} is outside the mount`);
+    const asset = await get(path.slice(mount.length));
+    assert.equal(asset.status, 200, path);
+    assert.match(asset.headers.get('content-type') ?? '', types[extension], path);
+    assert.match(asset.headers.get('cache-control') ?? '', /\bimmutable\b/i, `Hashed cache policy: ${path}`);
+    const bytes = await asset.arrayBuffer();
+    assert(bytes.byteLength > 0, `${path} was empty`);
+    coldGzipBytes += gzipSync(bytes).byteLength;
+  }
+  assert(coldGzipBytes <= 32 * 1024, `Cold shell at ${pathname}: ${coldGzipBytes} gzip bytes exceeds 32 KiB`);
+  console.log(`Cold shell at ${pathname}: ${coldGzipBytes} gzip bytes.`);
   const missing = await get('/assets/infra-smoke-missing.js');
   assert.equal(missing.status, 404, 'A missing bundled asset must not return the SPA');
   await missing.body?.cancel();
@@ -85,7 +100,7 @@ function writeJson(path, method, body, cookie) {
 function upgradeStatus(requestOrigin, cookie) {
   return new Promise((resolve, reject) => {
     const request = origin.startsWith('https:') ? httpsRequest : httpRequest;
-    const probe = request(new URL('/ws', origin), {
+    const probe = request(appUrl('/ws'), {
       signal: AbortSignal.timeout(5000),
       headers: {
         Connection: 'Upgrade',
@@ -109,7 +124,7 @@ function upgradeStatus(requestOrigin, cookie) {
 }
 
 async function withSocket(cookie, action) {
-  const target = new URL('/ws', origin);
+  const target = appUrl('/ws');
   target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
   const socket = new WebSocket(target, { headers: { Origin: origin, Cookie: cookie } });
   const queue = [];
@@ -204,7 +219,8 @@ if (phase === 'seed') {
   assert(cookieHeader, '/api/guest did not set its cookie');
   assert(/;\s*httponly\b/i.test(cookieHeader), 'Guest cookie is not HttpOnly');
   assert(/;\s*samesite=lax\b/i.test(cookieHeader), 'Guest cookie is not SameSite=Lax');
-  assert(/;\s*path=\/(?:;|$)/i.test(cookieHeader), 'Guest cookie is not scoped to the origin root');
+  const cookieAttributes = cookieHeader.split(';').slice(1).map(attribute => attribute.trim());
+  assert(cookieAttributes.includes(`path=${mount || '/'}`), `Guest cookie is not scoped to ${mount || '/'}`);
   if (origin.startsWith('https:')) {
     assert(/;\s*secure\b/i.test(cookieHeader), 'HTTPS guest cookie is not Secure');
   }
