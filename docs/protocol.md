@@ -81,8 +81,9 @@ self = {seat,inviteCode,hand,drawnTileId,legalOptions}
   hand: [{tileId,face}]; drawnTileId: string | null
   legalOptions: [{optionId,kind,tileIds,faces}]
 game = null before first hand of each match, otherwise
-  {handNumber,dealerSeat,phase,turnSeat,wallCount,seats,window,settlement}
+  {handNumber,dealerSeat,phase,turnSeat,wallCount,kongRoll,seats,window,settlement}
   phase: "turn" | "claim" | "settled"; turnSeat: seat | null
+  kongRoll: null or {seat,dice,lowerDie}, with dice: [integer,integer] in roll order, faces 1–6
   seats: four {seat,concealedCount,discards,melds,revealedTiles,total}
   melds: [{kind,method,fromSeat,tiles}] where kind is "chi" | "peng" | "gang" | "bu",
     method: "open" | "concealed" | "added" | null (not applicable),
@@ -92,15 +93,22 @@ game = null before first hand of each match, otherwise
     trigger: null or {seat,faces}, where faces is face[] of public faces (up to two for a kong)
   settlement: null or {reason,nextDealerSeat,sourceSeat,winners,birds,seatResults,transfers?}
     reason: "win" | "draw"; sourceSeat: seat | null
-    winners: [{seat,winBy,winningTiles,patterns}] where winningTiles is face[]
+    winners: [{seat,winBy,winningTiles,patterns,winningHand}] where winningTiles is face[]
     winBy: "selfDraw" | "discard" | "robKong"; patterns: [{code,label,points}]
+    winningHand: {concealedTiles: face[], melds: [{kind,method,fromSeat,tiles: face[]}]}
     birds: face[]; seatResults: four {seat,delta,total}
     optional transfers: [{fromSeat,toSeat,points,reason}] where reason is "win" | "opening"
 ```
 
-Faces are suited codes `b1`–`b9` (bamboo), `c1`–`c9` (characters), `d1`–`d9` (dots). `discards` and `revealedTiles` are public face arrays; discards are chronological unclaimed tiles. Legal option `kind` is `discard`, `draw`, `chi`, `peng`, `gang`, `bu`, `hu`, `pass` or `reveal`; `tileIds` references only own hand tiles, `faces` previews involved faces, both arrays possibly empty. Only the server interprets `optionId`; the list is empty when the seat has no pending decision and disabled in the UI while paused. Nothing exposes the wall order, seed, concealed opponents' faces or IDs, unrevealed option choices, guest identifiers or another room.
+Faces are suited codes `b1`–`b9` (bamboo), `c1`–`c9` (characters), `d1`–`d9` (dots). `discards` and `revealedTiles` are public face arrays; discards are chronological unclaimed tiles. Legal option `kind` is `discard`, `draw`, `chi`, `peng`, `gang`, `bu`, `hu`, `pass` or `reveal`; `tileIds` references only own hand tiles, `faces` previews involved faces, both arrays possibly empty. Only the server interprets `optionId`; the list is empty when the seat has no pending decision and disabled in the UI while paused. Opponents' hidden faces remain private except for opening evidence, public triggers and terminal winning hands. Nothing exposes the wall order, seed, opponents' tile IDs, unrevealed option choices, guest identifiers or another room.
 
-Settlement points/deltas/totals are signed integers; totals accumulate across hands, and per-hand deltas sum to zero. `sourceSeat` is null for self-draw or draw. `nextDealerSeat` is a seat (even at match end); a draw has no winners. Winning faces are per winner, never a top-level `winningTile`; settlement does not implicitly reveal hidden hands. The current engine emits `transfers` from scoring; pass through the actual breakdown, never synthesize it from net scores. Each transfer moves positive integer `points` from payer to recipient, and per-seat net transfers must match the deltas.
+Seat IDs are absolute (`0`–`3`). Turn order is `(seat + 1) % 4`, displayed counterclockwise: from the viewer's seat at the bottom, offsets `0`, `1`, `2`, `3` are near, right, far, left. Only the discarder’s immediate successor may Chow (`chi`), so the meld’s `fromSeat` is the claimant’s left neighbor. Seat references on the wire remain absolute.
+
+`kongRoll` is non-null only during the replacement turn after a committed Gang. `seat` identifies the player who made the Gang, and `lowerDie` is the smaller face used to pick the replacement stack. Choosing the legal `gang` option requests the roll, with no separate command. A pending rob, Bu, ordinary draws, and any subsequent discard claim do not show a roll.
+
+Settlement points/deltas/totals are signed integers; totals accumulate across hands, and per-hand deltas sum to zero. `sourceSeat` is null for self-draw or draw. `nextDealerSeat` is a seat (even at match end); a draw has no winners. The current engine emits `transfers` from scoring; pass through the actual breakdown, never synthesize it from net scores. Each transfer moves positive integer `points` from payer to recipient, and per-seat net transfers must match the deltas.
+
+Only a committed win projects a `winningHand` for each winner. Display `winningTiles` (the event tile) separately: `concealedTiles` excludes only the actual self-drawn tile, or is the winner's unchanged concealed hand for discard or rob wins. Multiple winners each display their own hand and the same public event tile. The winner's melds use the seat meld metadata but show all faces, including all four in a concealed kong. `game.seats[].melds` stays redacted for concealed kongs, even after settlement.
 
 - New room starts at `(roomRevision,gameRevision)=(1,0)`. Advance `roomRevision` once for changed roster/readiness/pause/status, seat name or committed chat. Advance `gameRevision` once per committed engine transition including starting a hand, and once on rematch to clear the game; neither resets. `rematch` advances both. No changes for a retry, ordinary reconnect, transient `connected` change or ticking clock. Publish latest presence on equal-revision snapshots; accept those in socket delivery order.
 - Anchor a window to the `gameRevision` that first exposed its `windowId`; wire window IDs are unique for the room lifetime, including rematches. Intermediate claim responses may advance `gameRevision` without changing that window's anchor or another seat's options. Each seat responds at most once per window. `choose` checks the **window ID and anchor**, not the latest room/game revision. A replaced, resolved or elapsed window rejects as `stale_window`, even if the same face has since appeared.

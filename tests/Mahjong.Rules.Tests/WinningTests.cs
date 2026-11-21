@@ -36,6 +36,15 @@ public sealed class WinningTests
         AssertBalanced(won.Settlement, 12, -4, -4, -4);
     }
 
+    [Fact]
+    public void SettledSelfDrawRequiresThePhysicalDrawToStillBeHeld()
+    {
+        var state = AtTurn([$"{FourRuns} c5 c5", "", "", ""], "c5 b9", drawn: "c5");
+        var won = Select(state, 0, "hu");
+        var broken = won with { Seats = won.Seats.SetItem(0, won.Seats[0] with { Drawn = Assert.Single(won.Birds) }) };
+        Assert.Throws<InvalidOperationException>(() => ChangshaEngine.ViewPublic(broken));
+    }
+
     [Theory]
     [InlineData("b1 b1 b1 c3 c3 c3 d7 d7 d7 c9 c9 c9 b4 b4", "allPungs")]
     [InlineData("b1 b1 b2 b3 b4 b2 b3 b4 b5 b6 b7 b7 b8 b9", "pureSuit")]

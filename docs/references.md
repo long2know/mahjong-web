@@ -180,3 +180,41 @@ B4's 17 inspected stills (media seconds) were `5.100, 5.241, 6.835, 8.260, 10.04
 B3's repeat stills corroborated exchange/pass (`00:05.089–00:06.609`), the three suit circles (`00:10.033`), a tile-info panel (`00:25.019`), marked discards (`00:38.005`, `01:00.081–01:04.084`) and seat-local `−800`/`+800` feedback (`00:53.036`). Nothing from this form changes the previous treatment or the client.
 
 Both clips produced nonzero audio-decoder counts, but no sound was listened to or classified. To close the evidence gaps, provide an authorized B3 recording or playable link with sound covering the opening and uninterrupted `01:07.047–03:38.000` tail, and an authorized B4 recording/link with sound that includes the skipped opening. Full files are preferable for timing and audio comparisons.
+
+## Targeted public recheck: tile depth and seat reactions
+
+A single logged-out Chrome run opened all five exact reference URLs on their ordinary public pages (HTTP 200 each). It sampled 31 stills at 1× without seeking or separate media retrieval. Playback was muted; audio was not assessed. The local run record is `artifacts/depth-reference-recheck/playback.json`. These deliberately sampled windows do not provide continuous coverage or revise the earlier login-cutoff findings.
+
+| Clip | Native video (px) | Sampled media positions (s) |
+|---|---|---|
+| B1 | 640×360 | 9.146, 17.006, 28.112, 30.643, 32.313 (5) |
+| B2 | 576×360 | 9.046, 22.838, 23.508, 24.341, 25.010, 27.018 (6) |
+| B3 | 576×360 | 9.102, 14.006, 20.103, 24.076, 52.049, 54.024, 56.022 (7) |
+| B4 | 576×360 | 5.708, 8.320, 9.417, 10.664, 12.514, 14.078 (6) |
+| Y1 | 608×1080 | 1.531, 5.624, 6.720, 11.434, 12.233, 13.501, 14.466 (7) |
+
+**Observed in the stills**
+
+- **B1 `28.112` s and B2 `23.508` and `24.341` s:** Ivory tile tops read as slabs against darker lower faces and contact shadows; seams separate the upright green backs. B2 shows `碰` and `过` controls at `23.508` s and an illustrated `碰` effect near the bottom rack at `24.341` s. The stills do not show what input triggered it.
+- **B3 `56.022` s and B4 `12.514` s:** B3 shows a warm gold `自摸` (self-draw) burst; B4 shows separate `胡` marks at the far and right seats rather than a single central effect.
+- **Y1 `5.624` and `6.720` s:** No hand is visible in the first still; a stylized hand extends in from the right over the right-side lane in the second. The pair does not establish the physical device or input, full animation timing or choreography, a character rig, or rules.
+
+**Lantern Table's original treatment.** The tilted CSS 2.5D table uses raised tile tops, shaded ivory-and-jade sidewalls and contact shadows, and the original articulated Fox, Rabbit, Tanuki and Dragon react to committed discards, calls, wins and losses without recreating characters, rigs or choreography from the clips.
+
+## WeChat still and sampled reference audio — 2026-11-21 UTC
+
+**User-supplied WeChat gameplay still.** The frame shows fine teal texture, a large embossed circular inlay, a rail in perspective, and a separate circular wind indicator with a central numeric readout and an adjacent remaining count. It does not establish dice eligibility, shooting, reset behavior, scoring or winning faces, visual pacing, or the exact rules variant. These are visual cues, not a basis for reproducing retail UI, assets, or player names.
+
+**Source-based design.** The [frozen local publish](browser-validation.md#frozen-lantern-hall-publish) includes Lantern Table's original tactile hall and round wind/dice device. This is a local implementation, not a release or fidelity claim. [Tencent QQ Game](https://game.qq.com/new05/help/csmj.htm) identifies the next player as the right-hand neighbor (§III) and allows a roll only for a legal Gang in a ready hand; Bu draws from the tail without rolling (§§V.3.9, VII.3, VII.6–7). QQ counts the tail stack as one; the [app profile](rules.md) retains its existing lower-of-two-dice rule, skipping that many occupied two-slot stacks from the tail.
+
+**Reference audio.** In a separate run, ordinary unmuted public playback of the same five IDs was routed into a private local audio sink. Short PCM samples were deleted after analysis. The local `artifacts/lantern-hall-audio-evidence/capture.json` records these player positions in media seconds:
+
+| Clip | Sampled interval (s) |
+|---|---|
+| B1 | `3.162457–11.39839` |
+| B2 | `0.366232–8.5929` |
+| B3 | `3.56081–11.858069` |
+| B4 | `4.473911–12.754967` |
+| Y1 | `0.597466–8.937149` |
+
+Spectrograms show repeating pitched and rhythmic material beneath transients in all five samples, consistent with music in those intervals. This is not a listening assessment and does not establish the track, its license, whether the sound came from the game or the edit, or what plays outside the sampled intervals. The app's [opt-in synthesized music](assets.md) is original and separate. No proprietary media is bundled or distributed.

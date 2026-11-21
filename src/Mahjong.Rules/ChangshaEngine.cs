@@ -25,11 +25,11 @@ public static class ChangshaEngine
         var index = 0;
         for (var packet = 0; packet < 3; packet++)
         {
-            foreach (var seat in Clockwise(input.DealerSeat))
+            foreach (var seat in InTurnOrder(input.DealerSeat))
                 for (var i = 0; i < 4; i++)
                     hands[seat].Add(shuffled[index++]);
         }
-        foreach (var seat in Clockwise(input.DealerSeat))
+        foreach (var seat in InTurnOrder(input.DealerSeat))
             hands[seat].Add(shuffled[index++]);
         var firstDraw = shuffled[index++];
         hands[input.DealerSeat].Add(firstDraw);
@@ -297,7 +297,7 @@ public static class ChangshaEngine
         var face = trigger.FaceIndex;
         var huOnly = kind == DecisionKind.RobKong || draw is DrawKind.LastTile or DrawKind.RolledSupplement ||
             state.Wall.IsEmpty;
-        foreach (var seat in Clockwise(Next(source)).Take(3))
+        foreach (var seat in InTurnOrder(Next(source)).Take(3))
         {
             var holder = state.Seats[seat];
             var options = ImmutableArray.CreateBuilder<DecisionOption>();
@@ -428,7 +428,7 @@ public static class ChangshaEngine
     private static bool ValidSeat(int seat) => (uint)seat < 4;
     private static int Next(int seat) => (seat + 1) % 4;
     private static int Distance(int from, int to) => (to - from + 4) % 4;
-    private static IEnumerable<int> Clockwise(int first) => Enumerable.Range(0, 4).Select(offset => (first + offset) % 4);
+    private static IEnumerable<int> InTurnOrder(int first) => Enumerable.Range(0, 4).Select(offset => (first + offset) % 4);
 
     private static void CheckVersion(GameState state)
     {
@@ -449,12 +449,57 @@ public static class ChangshaEngine
         return new(state.Start.HandNumber, state.Start.DealerSeat,
             window is null ? "settled" : turn ? "turn" : "claim", turn ? window!.Seat : null, state.Wall.Length,
             seats, window is null ? null : new(window.Id, Reason(window), window.ClosesAt,
-                window.Trigger is { } tile ? new(window.Seat, [Tiles.Face(tile)]) : null), state.Settlement);
+                window.Trigger is { } tile ? new(window.Seat, [Tiles.Face(tile)]) : null),
+            window is null && state.Settlement is { } settlement ? ProjectSettlement(state, settlement) : null,
+            window is { Kind: DecisionKind.Turn, DrawKind: DrawKind.RolledSupplement }
+                ? ProjectKongRoll(state, window.Seat) : null);
+    }
+
+    private static PublicKongRoll ProjectKongRoll(GameState state, int seat)
+    {
+        // The supplement draw opens exactly one window, so the roll used the preceding sequence.
+        var (first, second) = Determinism.RollDice(state.Start, state.WindowNumber - 1);
+        return new(seat, [first, second], Math.Min(first, second));
     }
 
     private static PublicMeld ProjectMeld(Meld meld) => new(meld.Kind, meld.FromSeat,
         [.. meld.Tiles.Select(tile => meld.Method == "concealed" ? null : Tiles.Face(tile))],
-        meld.Kind is "gang" or "bu" ? meld.Method : null);
+        ProjectMeldMethod(meld));
+
+    private static string? ProjectMeldMethod(Meld meld) => meld.Kind is "gang" or "bu" ? meld.Method : null;
+
+    private static PublicSettlement ProjectSettlement(GameState state, Settlement settlement)
+    {
+        var winners = settlement.Reason switch
+        {
+            "win" when !settlement.Winners.IsDefaultOrEmpty =>
+                settlement.Winners.Select(winner => ProjectWinner(state, winner)).ToImmutableArray(),
+            "draw" when !settlement.Winners.IsDefault && settlement.Winners.IsEmpty => [],
+            _ => throw new InvalidOperationException("Inconsistent terminal settlement.")
+        };
+        return new(settlement.Reason, settlement.NextDealerSeat, settlement.SourceSeat, winners, settlement.Birds,
+            settlement.SeatResults, settlement.Transfers);
+    }
+
+    private static PublicWinner ProjectWinner(GameState state, Winner winner)
+    {
+        if (!ValidSeat(winner.Seat))
+            throw new InvalidOperationException("Invalid settled winner seat.");
+
+        var holder = state.Seats[winner.Seat];
+        var concealed = winner.WinBy switch
+        {
+            "selfDraw" when holder.Drawn is { } drawn && holder.Hand.Contains(drawn) &&
+                !winner.WinningTiles.IsDefaultOrEmpty && winner.WinningTiles.Length == 1 &&
+                Tiles.Face(drawn) == winner.WinningTiles[0] => holder.Hand.Remove(drawn),
+            "discard" or "robKong" => holder.Hand,
+            _ => throw new InvalidOperationException("Inconsistent settled winning tile.")
+        };
+        var hand = new PublicWinningHand([.. concealed.Select(Tiles.Face)],
+            [.. holder.Melds.Select(meld => new PublicWinningMeld(meld.Kind, ProjectMeldMethod(meld),
+                meld.FromSeat, [.. meld.Tiles.Select(Tiles.Face)]))]);
+        return new(winner.Seat, winner.WinBy, winner.WinningTiles, winner.Patterns, hand);
+    }
 
     private static string Reason(DecisionWindow window) => window.Kind switch
     {

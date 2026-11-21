@@ -5,39 +5,53 @@ namespace Mahjong.Rules.Tests;
 
 public sealed class ClaimTests
 {
-    private const string ChiOnly = "b3 b4 b6 c1 c1 c6 c8 c9 d1 d4 d6 d7 d9";
-    private const string WaitOne = "b3 b4 c1 c2 c3 d1 d2 d3 d7 d8 d9 c2 c2";
+    private const string ChiOnly = "b3 b4 b8 c1 c1 c6 c8 c9 d1 d4 d6 d7 d9";
     private const string WaitThree = "b3 b4 c4 c5 c6 d4 d5 d6 d7 d8 d9 c5 c5";
     private const string PengTwo = "b5 b5 b1 b2 b6 b7 d9 d3 d4 c5 c8 c8 c9";
 
-    [Fact]
-    public void ChiIsNextSeatOnlyAndPengTakesPriority()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void ChiIsNextSeatOnlyAndPengTakesPriority(int source)
     {
-        var state = Select(AtTurn(["b5", ChiOnly, PengTwo, WaitThree], "c4 b9 c7", dealer: 2), 0, "discard", "b5");
+        var next = (source + 1) % 4;
+        var across = (source + 2) % 4;
+        var previous = (source + 3) % 4;
+        var hands = new string[4];
+        hands[source] = "b5";
+        hands[next] = ChiOnly;
+        hands[across] = "b5 b5 b3 b4 b8 b9 d9 d3 d4 c5 c8 c8 c9";
+        hands[previous] = WaitThree;
+        var state = Select(AtTurn(hands, "c4 b9 c7", seat: source, dealer: across), source, "discard", "b5");
         var window = ChangshaEngine.ViewPublic(state).Window!;
         Assert.Equal("discard", window.Reason);
-        Assert.Equal(0, window.Trigger!.Seat);
+        Assert.Equal(source, window.Trigger!.Seat);
         Assert.Equal(new[] { "b5" }, window.Trigger.Faces);
-        Assert.True(Has(state, 1, "chi"));
-        Assert.True(Has(state, 2, "peng"));
-        Assert.False(Has(state, 3, "chi"));
-        Assert.True(Has(state, 3, "hu"));
-        Assert.False(Has(state, 0, "peng"));
-        var chi = Select(state, 1, "chi", "b3");
-        var peng = Select(Select(chi, 2, "peng"), 3, "pass");
-        var publicMeld = Assert.Single(ChangshaEngine.ViewPublic(peng).Seats[2].Melds);
+        var chow = Assert.Single(ChangshaEngine.ViewSeat(state, next).LegalOptions, option => option.Kind == "chi");
+        Assert.Equal(new[] { "b3", "b4", "b5" }, chow.Faces);
+        Assert.False(Has(state, across, "chi"));
+        Assert.False(Has(state, previous, "chi"));
+        Assert.True(Has(state, across, "peng"));
+        Assert.True(Has(state, previous, "hu"));
+        Assert.False(Has(state, source, "peng"));
+        var chi = Select(state, next, "chi", "b3");
+        var peng = Select(Select(chi, across, "peng"), previous, "pass");
+        var publicMeld = Assert.Single(ChangshaEngine.ViewPublic(peng).Seats[across].Melds);
         Assert.Equal(new[] { "b5", "b5", "b5" }, publicMeld.Tiles);
         Assert.Equal("peng", publicMeld.Kind);
-        Assert.Equal(0, publicMeld.FromSeat);
+        Assert.Equal(source, publicMeld.FromSeat);
         Assert.Null(publicMeld.Method);
-        Assert.Equal(2, ChangshaEngine.ViewPublic(peng).TurnSeat);
-        Assert.Null(ChangshaEngine.ViewSeat(peng, 2).DrawnTileId);
-        Assert.DoesNotContain(state.Window!.Trigger!.Value, peng.Seats[0].Discards);
-        Assert.Empty(peng.Seats[1].Melds);
+        Assert.Equal(across, ChangshaEngine.ViewPublic(peng).TurnSeat);
+        Assert.Null(ChangshaEngine.ViewSeat(peng, across).DrawnTileId);
+        Assert.DoesNotContain(state.Window!.Trigger!.Value, peng.Seats[source].Discards);
+        Assert.Empty(peng.Seats[next].Melds);
 
-        var chiWon = Select(Select(chi, 2, "pass"), 3, "pass");
-        Assert.Equal("chi", Assert.Single(chiWon.Seats[1].Melds).Kind);
-        Assert.Equal(1, ChangshaEngine.ViewPublic(chiWon).TurnSeat);
+        var chiWon = Select(Select(chi, across, "pass"), previous, "pass");
+        var chiView = ChangshaEngine.ViewPublic(chiWon);
+        var chiMeld = Assert.Single(chiView.Seats[next].Melds);
+        Assert.Equal("chi", chiMeld.Kind);
+        Assert.Equal(source, chiMeld.FromSeat);
+        Assert.Equal(next, chiView.TurnSeat);
         Assert.Equal(state.Wall.Length, chiWon.Wall.Length);
     }
 
@@ -80,9 +94,13 @@ public sealed class ClaimTests
     [Fact]
     public void AllWinningSeatsSettleInTableOrderWithOnePhysicalTile()
     {
-        var state = Select(AtTurn(["b5", WaitOne, PengTwo, WaitThree], "c4 b9 c7", dealer: 2), 0, "discard", "b5");
+        const string heldOne = "b3 b4 b5 b6 b7 c1 c2 c2 c2 c3";
+        const string heldThree = "b3 b4 c4 c5 c5 c5 c6 d4 d5 d6";
+        var state = Select(AtTurn(["b5", heldOne, PengTwo, heldThree], "c4 b9 c7", dealer: 2,
+            melds: [new(1, "chi", "d1 d2 d3", 0), new(3, "chi", "d7 d8 d9", 2)]), 0, "discard", "b5");
         var first = Select(Select(state, 3, "hu"), 1, "hu");
         var second = Select(Select(state, 1, "hu"), 3, "hu");
+        Assert.Null(ChangshaEngine.ViewPublic(first).Settlement);
         Assert.Equal(Checkpoint(Expire(first)), Checkpoint(Expire(second)));
         var ended = Expire(first);
         var settlement = ended.Settlement!;
@@ -93,6 +111,18 @@ public sealed class ClaimTests
         Assert.Equal(state.Window!.Trigger, ended.ClaimedWinTile);
         Assert.Equal(0, settlement.NextDealerSeat);
         AssertBalanced(settlement, -3, 2, 0, 1);
+
+        var winners = ChangshaEngine.ViewPublic(ended).Settlement!.Winners;
+        Assert.Equal(new[] { 1, 3 }, winners.Select(winner => winner.Seat));
+        Assert.All(winners, winner => Assert.Equal("b5", Assert.Single(winner.WinningTiles)));
+        Assert.Equal(heldOne.Split(' '), winners[0].WinningHand.ConcealedTiles);
+        Assert.Equal(heldThree.Split(' '), winners[1].WinningHand.ConcealedTiles);
+        var oneMeld = Assert.Single(winners[0].WinningHand.Melds);
+        var threeMeld = Assert.Single(winners[1].WinningHand.Melds);
+        Assert.Equal(("chi", null, 0), (oneMeld.Kind, oneMeld.Method, oneMeld.FromSeat));
+        Assert.Equal(("chi", null, 2), (threeMeld.Kind, threeMeld.Method, threeMeld.FromSeat));
+        Assert.Equal(new[] { "d1", "d2", "d3" }, oneMeld.Tiles);
+        Assert.Equal(new[] { "d7", "d8", "d9" }, threeMeld.Tiles);
     }
 
     [Fact]

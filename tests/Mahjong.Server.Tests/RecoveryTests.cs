@@ -181,11 +181,25 @@ public sealed class RecoveryTests
         {
             Assert.Equal(hand, snapshot.Table().GetProperty("handNumber").GetInt32());
             Assert.Equal(dealer, snapshot.Table().GetProperty("dealerSeat").GetInt32());
+            Assert.Equal(JsonValueKind.Null, snapshot.Table().GetProperty("settlement").ValueKind);
+            Assert.Equal(JsonValueKind.Null, snapshot.Table().GetProperty("kongRoll").ValueKind);
             var settled = await PlayHand(host, snapshot);
             Assert.Equal(hand == 4 ? "complete" : "betweenHands", settled.Status());
             Assert.Equal(JsonValueKind.Null, settled.Window().ValueKind);
+            Assert.Equal(JsonValueKind.Null, settled.Table().GetProperty("kongRoll").ValueKind);
             AssertRedacted(settled);
             var settlement = settled.Table().GetProperty("settlement");
+            var winners = settlement.GetProperty("winners").EnumerateArray().ToArray();
+            Assert.Equal(settlement.Text("reason") == "draw", winners.Length == 0);
+            foreach (var winner in winners)
+            {
+                var chair = settled.Table().GetProperty("seats")[winner.GetProperty("seat").GetInt32()];
+                var winningHand = winner.GetProperty("winningHand");
+                var nonFinalCount = chair.GetProperty("concealedCount").GetInt32() - (winner.Text("winBy") == "selfDraw" ? 1 : 0);
+                Assert.Equal(nonFinalCount, winningHand.GetProperty("concealedTiles").GetArrayLength());
+                Assert.Equal(chair.GetProperty("melds").GetArrayLength(), winningHand.GetProperty("melds").GetArrayLength());
+                Assert.Single(winner.GetProperty("winningTiles").EnumerateArray());
+            }
             var seatResults = settlement.GetProperty("seatResults").EnumerateArray().ToArray();
             Assert.Equal(0, seatResults.Sum(result => result.GetProperty("delta").GetInt32()));
             for (var seat = 0; seat < 4; seat++)
@@ -228,6 +242,7 @@ public sealed class RecoveryTests
         (await host.Command("start", new { roomId, expectedRoomRevision = waiting.RoomRevision() })).Ok();
         var rematch = await host.Snapshot(s => s.Status() == "playing");
         Assert.Equal(1, rematch.Table().GetProperty("handNumber").GetInt32());
+        Assert.Equal(JsonValueKind.Null, rematch.Table().GetProperty("settlement").ValueKind);
         Assert.NotEqual(firstWindow, rematch.Window().Text("windowId"));
         Assert.All(rematch.Table().GetProperty("seats").EnumerateArray(), seat => Assert.Equal(0, seat.GetProperty("total").GetInt32()));
         Assert.Equal("stale_window", (await host.Command("choose",
@@ -268,6 +283,16 @@ public sealed class RecoveryTests
     {
         for (var transitions = 0; transitions < 500 && snapshot.Status() == "playing"; transitions++)
         {
+            var table = snapshot.Table();
+            var roll = table.GetProperty("kongRoll");
+            if (roll.ValueKind != JsonValueKind.Null)
+            {
+                var dice = roll.GetProperty("dice").EnumerateArray().Select(die => die.GetInt32()).ToArray();
+                Assert.Equal(2, dice.Length);
+                Assert.All(dice, die => Assert.InRange(die, 1, 6));
+                Assert.Equal(dice.Min(), roll.GetProperty("lowerDie").GetInt32());
+                Assert.Equal(table.GetProperty("turnSeat").GetInt32(), roll.GetProperty("seat").GetInt32());
+            }
             var options = snapshot.Private().GetProperty("legalOptions").EnumerateArray().ToArray();
             if (options.Length != 0)
             {

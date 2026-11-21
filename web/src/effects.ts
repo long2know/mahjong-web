@@ -8,7 +8,7 @@ type Flight = "deal" | "draw" | "discard";
 type Stamp = Meld["kind"] | "reveal" | "win";
 
 const ink: Record<Stamp, { label: string; path: string }> = {
-  chi: { label: "Chi", path: "M5 19h15v23H5z M33 7q-2 10-10 18 M30 15h25 M28 26h23L36 39q-9 10 5 10h10q5 0 7-8" },
+  chi: { label: "Chow", path: "M5 19h15v23H5z M33 7q-2 10-10 18 M30 15h25 M28 26h23L36 39q-9 10 5 10h10q5 0 7-8" },
   peng: { label: "Peng", path: "M5 12h21 M17 12Q14 24 5 32 M11 28h13v17H11z M35 7l4 7 M51 7l-4 7 M30 17h27 M39 18v28 M47 18v28 M31 25l4 9 M55 25l-4 9 M30 46h28" },
   gang: { label: "Kong", path: "M5 18h25 M17 7v42 M16 22Q12 34 4 41 M19 24l12 11 M33 14h23 M45 14v31 M31 45h28" },
   bu: { label: "Supplement", path: "M12 7l8 5 M5 18h21Q20 30 5 38 M15 31v18 M23 29l6 6 M29 24l-5 5 M39 8v41 M42 20l15 10" },

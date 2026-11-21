@@ -106,6 +106,7 @@ export interface Settlement {
     seat: Seat;
     winBy: "selfDraw" | "discard" | "robKong";
     winningTiles: Face[];
+    winningHand?: { concealedTiles: Face[]; melds: (Omit<Meld, "tiles"> & { tiles: Face[] })[] };
     patterns: { code: string; label: string; points: number }[];
   }[];
   birds: Face[];
@@ -118,6 +119,7 @@ export interface Game {
   dealerSeat: Seat;
   phase: "turn" | "claim" | "settled";
   turnSeat: Seat | null;
+  kongRoll?: { seat: Seat; dice: [number, number]; lowerDie: number } | null;
   wallCount: number;
   seats: GameSeat[];
   window: DecisionWindow | null;

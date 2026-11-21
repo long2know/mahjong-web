@@ -1,5 +1,6 @@
 import { button, el, icon, reconcile, text, winds } from "./dom";
-import type { ChatMessage, Guest, PublicRoom, RoomSeat, Seat, Snapshot } from "./protocol";
+import type { ChatMessage, Face, Guest, PublicRoom, RoomSeat, Seat, Snapshot } from "./protocol";
+import { setMelds } from "./table";
 import { tileLabel } from "./tile";
 
 export function iconButton(name: Parameters<typeof icon>[0], label: string, run: () => void): HTMLButtonElement {
@@ -259,7 +260,7 @@ export function rulesContent(): HTMLElement {
     el("h3", "", "Your turn"),
     el("p", "", "Choose from the actions shown. To discard, select one tile in your hand, then confirm with the separate discard button. The table clock continues while a dialog is open."),
     el("h3", "", "Claims and wins"),
-    el("p", "", "Chi makes a sequence, Peng makes three matching tiles, and a Kong uses four. Changsha also has opening reveals, special wins, and bird scoring. The table offers only the choices your seat can make; use Pass to decline an optional claim."),
+    el("p", "", "Chow makes a sequence, Peng makes three matching tiles, and a Kong uses four. Changsha also has opening reveals, special wins, and bird scoring. The table offers only the choices your seat can make; use Pass to decline an optional claim."),
     el("h3", "", "After a hand"),
     el("p", "", "See hand scores and any winning patterns, then continue if there are more hands. At the end, the host can rematch with the same seats."));
 }
@@ -318,6 +319,14 @@ export class ChatPanel {
 const winNames = { selfDraw: "Self-draw", discard: "Claimed discard", robKong: "Robbed kong" };
 const sign = (value: number) => value > 0 ? `+${value}` : String(value);
 
+function resultRack(name: string, tiles: Face[], style = ""): HTMLElement {
+  const rack = el("div", `meld-group ${style}`, el("div", "result-tiles", ...tiles.map(face => tileLabel(face))),
+    el("span", "meld-caption", name));
+  rack.setAttribute("role", "group");
+  rack.setAttribute("aria-label", name);
+  return rack;
+}
+
 export function resultsContent(state: Snapshot, actions: HTMLElement[]): HTMLElement {
   const game = state.game!;
   const settlement = game.settlement!;
@@ -335,13 +344,23 @@ export function resultsContent(state: Snapshot, actions: HTMLElement[]): HTMLEle
   });
   const scoreboard = el("table", "scoreboard", el("caption", "sr-only", "Per-seat score changes and match totals"), head, deltas);
   root.append(scoreboard);
-  settlement.winners.forEach(winner => {
-    const winnerNode = el("section", "winner", el("h3", "", `${seatName(winner.seat)} · ${winNames[winner.winBy]}`));
-    if (winner.winningTiles.length) winnerNode.append(el("div", "result-tiles", ...winner.winningTiles.map(face => tileLabel(face))));
-    if (winner.patterns.length) winnerNode.append(el("ul", "inline-list",
-      ...winner.patterns.map(pattern => el("li", "", `${pattern.label} · ${pattern.points}`))));
-    root.append(winnerNode);
-  });
+  if (settlement.reason === "win") {
+    const hands = el("div", "form winning-hands");
+    for (const winner of settlement.winners) {
+      const winnerNode = el("section", "winner", el("h3", "", `${seatName(winner.seat)} · ${winNames[winner.winBy]}`));
+      const tiles = el("div", "result-tiles");
+      if (winner.winningHand) {
+        setMelds(tiles, winner.winningHand.melds, game.dealerSeat);
+        if (winner.winningHand.concealedTiles.length) tiles.prepend(resultRack("Concealed tiles", winner.winningHand.concealedTiles));
+      }
+      if (winner.winningTiles.length) tiles.append(resultRack("Winning tile", winner.winningTiles, "winning-event"));
+      if (tiles.childElementCount) winnerNode.append(tiles);
+      if (winner.patterns.length) winnerNode.append(el("ul", "inline-list",
+        ...winner.patterns.map(pattern => el("li", "", `${pattern.label} · ${pattern.points}`))));
+      hands.append(winnerNode);
+    }
+    root.append(hands);
+  }
   if (settlement.birds.length) root.append(el("section", "result-section", el("h3", "", "Birds"),
     el("div", "result-tiles", ...settlement.birds.map(face => tileLabel(face)))));
   if (settlement.transfers?.length) root.append(el("section", "result-section", el("h3", "", "Score transfers"),

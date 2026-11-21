@@ -45,6 +45,7 @@ internal static class Projection
                 table.Phase,
                 table.TurnSeat,
                 table.WallCount,
+                table.KongRoll,
                 seats = table.Seats.Select(player => new
                 {
                     player.Seat,

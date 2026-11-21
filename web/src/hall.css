@@ -1,0 +1,100 @@
+/* The hall is a painted backdrop, never a layer over the actors or table effects. */
+body:has(.play)::before {
+  --hall-horizon: clamp(185px, 31dvh, 350px);
+  --hall-lamp: clamp(86px, 14dvh, 152px);
+  --hall-hang: calc(var(--hall-horizon) * .32);
+  --hall-left: 19%;
+  --hall-right: 82%;
+  --hall-beam: calc(var(--hall-horizon) * .57);
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    url("./hall-lantern.svg") var(--hall-left) var(--hall-hang) / auto var(--hall-lamp) no-repeat,
+    url("./hall-lantern.svg") var(--hall-right) var(--hall-hang) / auto var(--hall-lamp) no-repeat,
+    linear-gradient(0deg, #0e1418 1%, transparent 38%, transparent 86%, #101318e0),
+    radial-gradient(ellipse at 21% var(--hall-beam), #ce79542c, transparent 32%),
+    radial-gradient(ellipse at 79% var(--hall-beam), #bd7c4826, transparent 29%),
+    radial-gradient(ellipse at 50% 34%, transparent 27%, #10141dbf 92%),
+    url("./hall-room.svg") top / 100% var(--hall-horizon) no-repeat,
+    repeating-conic-gradient(from -8deg at 50% -29%, transparent 0deg 7.7deg, #67453662 7.8deg 8deg,
+      #18151ab8 8.02deg 8.48deg, transparent 8.55deg 12deg) bottom / 100% calc(100% - var(--hall-horizon)) no-repeat,
+    linear-gradient(0deg, transparent 35%, #b4784c24 35.2%, #160f155e 35.45%, transparent 35.7%,
+      transparent 57%, #8d60423f 57.2%, #190f165e 57.4%, transparent 57.7%,
+      transparent 72%, #714a3960 72.2%, #190f165e 72.4%, transparent 72.8%) bottom / 100% calc(100% - var(--hall-horizon)) no-repeat,
+    radial-gradient(ellipse at 48% 50%, #574030, #292126 56%, #171a21 85%);
+}
+
+.play .board-stage {
+  background:
+    radial-gradient(ellipse at 50% 71%, #0c0c11de 14%, #0c1012c9 47%, transparent 74%),
+    radial-gradient(ellipse at 50% 89%, #ad6d3c36, transparent 59%);
+}
+
+.play .board-stage::before {
+  background: linear-gradient(0deg, #281719, #5a3327 38%, #9a5c36 65%, #341f1e 96%);
+  box-shadow: 0 2px #866047, 0 5px #26191b, 0 10px 12px #100f12d9, 0 26px 37px #101016a6;
+}
+
+.play .board-plane {
+  border-color: transparent;
+  background:
+    repeating-linear-gradient(32deg, #d7ddba0d 0 1px, transparent 1px 4px) padding-box,
+    repeating-linear-gradient(123deg, #081f2623 0 1px, transparent 1px 4px) padding-box,
+    radial-gradient(ellipse at 14% 4%, #d395535f, #ad8b442d 23%, transparent 59%) padding-box,
+    radial-gradient(ellipse at 83% 1%, #c9935254, #a0794229 20%, transparent 52%) padding-box,
+    radial-gradient(ellipse at 48% 45%, #357161, #245c53 60%, #173c3d) padding-box,
+    linear-gradient(0deg, #0003, transparent 3%, transparent 96%, #ffdb9a2c) border-box,
+    linear-gradient(111deg, #623b2a, #b37a48 16%, #6e402b 34%, #553027 60%, #a86e43 86%, #673d2a) border-box;
+  box-shadow: inset 0 0 0 1px #e3b67b98, inset 0 0 0 3px #2c201ebd,
+    inset 0 0 0 4px #edbd6c52, inset 0 0 26px #0e262892, 0 1px #c08b5999;
+}
+
+.play .board-plane::before {
+  --hall-inlay: url("./hall-inlay.svg");
+  --hall-inlay-size: clamp(24px, 4.2vw, 59px);
+  border-color: #e6bb7469;
+  background:
+    var(--hall-inlay) 3.2% 12%,
+    var(--hall-inlay) 96.8% 12%,
+    var(--hall-inlay) 3.2% 88%,
+    var(--hall-inlay) 96.8% 88%;
+  background-repeat: no-repeat;
+  background-size: var(--hall-inlay-size);
+  box-shadow: 0 0 0 1px #162b2899, inset 0 0 0 1px #202d2e7a, inset 0 1px #d4ae613d;
+}
+
+.play .board-well {
+  border-color: #c0ae7052;
+  background:
+    radial-gradient(circle closest-side, transparent 72%, #071a202b 72.5% 73.4%, #9ab79a20 74% 74.8%,
+      transparent 76% 82%, #95b39117 82.4% 83%, transparent 84%),
+    repeating-linear-gradient(39deg, #bbd4b106 0 .65px, transparent .65px 3px),
+    repeating-linear-gradient(129deg, #06172210 0 .65px, transparent .65px 3px),
+    radial-gradient(ellipse at 11% 1%, #ad8b442b, transparent 48%),
+    radial-gradient(ellipse at 84% 3%, #c0925322, transparent 42%),
+    radial-gradient(ellipse at 49% 39%, #133e3ab3, #112b2cd4);
+  box-shadow: inset 0 2px 6px #0b2124ad, 0 1px #adc08b3d;
+}
+
+@media (max-width: 630px) and (orientation: portrait) {
+  body:has(.play)::before {
+    --hall-horizon: clamp(185px, 29dvh, 245px);
+    --hall-lamp: clamp(76px, 11dvh, 105px);
+    --hall-hang: calc(var(--hall-horizon) * .455);
+    --hall-left: 8%;
+    --hall-right: 92%;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 630px) {
+  body:has(.play)::before {
+    --hall-horizon: clamp(124px, 44dvh, 206px);
+    --hall-lamp: clamp(54px, 18dvh, 89px);
+    --hall-hang: calc(var(--hall-horizon) * .31);
+    --hall-left: 17%;
+    --hall-right: 49%;
+  }
+}
