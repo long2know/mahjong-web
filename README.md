@@ -20,6 +20,8 @@ Open [http://127.0.0.1:8911](http://127.0.0.1:8911); change `8911` if needed. No
 
 To keep an existing `/mahjong` route, start a revision that supports mounts with `--env BASE_URL=/mahjong` and open `http://127.0.0.1:8911/mahjong/`. See the [published Compose example](docs/operations.md#keep-an-existing-mahjong-route-and-bind-mount) for keeping the existing bind mount without reusing the legacy database, and the [HTTPS proxy contract](docs/operations.md#https-for-other-devices).
 
+For a TLS proxy that already preserves `Host`, `/mahjong` and WebSocket upgrades, add `--env Mahjong__BehindHttpsProxy=true` and keep the raw HTTP upstream private to that proxy. No app hostname or proxy IP setting is needed.
+
 ## Run from source
 
 Install the exact [.NET 10 SDK](global.json) and Node.js **26.13.1** LTS. From the repository root:

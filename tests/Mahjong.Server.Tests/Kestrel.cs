@@ -34,6 +34,13 @@ internal sealed class Kestrel : IAsyncDisposable
         return this;
     }
 
+    public Kestrel InProduction()
+    {
+        _configuration["ASPNETCORE_ENVIRONMENT"] = _configuration["DOTNET_ENVIRONMENT"] = "Production";
+        _configuration.Remove("Mahjong__Testing__TickMilliseconds");
+        return this;
+    }
+
     public async Task StartAsync()
     {
         Assert.Null(_process);
@@ -50,6 +57,7 @@ internal sealed class Kestrel : IAsyncDisposable
         start.ArgumentList.Add("--Mahjong:DataDirectory");
         start.ArgumentList.Add(DataDirectory);
         start.Environment.Remove("BASE_URL");
+        start.Environment.Remove("Mahjong__BehindHttpsProxy");
         foreach (var (key, value) in _configuration) start.Environment[key] = value;
 
         var ready = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);
