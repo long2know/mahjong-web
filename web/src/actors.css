@@ -1,0 +1,74 @@
+.seat-cast {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  container-type: size;
+}
+
+.seat-actor {
+  --actor-size: clamp(51px, min(18.5cqw, 47cqh), 146px);
+  position: absolute;
+  left: var(--actor-x);
+  top: clamp(calc(var(--actor-size) * .48 + 2px), var(--actor-y), calc(100% - var(--actor-size) * .44 - 2px));
+  width: var(--actor-size);
+  height: auto;
+  overflow: visible;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.seat-actor[data-place="near"] { --actor-x: 27%; --actor-y: 81%; }
+.seat-actor[data-place="left"] { --actor-x: 13%; --actor-y: 28%; }
+.seat-actor[data-place="far"] { --actor-x: 75%; --actor-y: 23%; }
+.seat-actor[data-place="right"] { --actor-x: 89%; --actor-y: 77%; }
+
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 630px) {
+  .seat-actor[data-place="near"] { --actor-x: 23%; }
+  .seat-actor[data-place="far"] { --actor-x: 78%; }
+}
+
+@media (min-width: 1000px) and (min-height: 600px) {
+  .seat-actor[data-place="near"] { --actor-x: 26%; --actor-y: 83%; }
+  .seat-actor[data-place="left"] { --actor-x: 11%; --actor-y: 24%; }
+  .seat-actor[data-place="far"] { --actor-x: 74%; --actor-y: 19%; }
+  .seat-actor[data-place="right"] { --actor-x: 89%; --actor-y: 69%; }
+}
+
+@container (height < 150px) {
+  .seat-actor[data-place="far"] { --actor-x: 83%; }
+}
+
+.seat-actor [data-joint] {
+  transform-box: view-box;
+  transform-origin: 0 0;
+}
+
+.seat-actor :is([data-eyes], [data-mouth], [data-hand]) { display: none; }
+.seat-actor :is([data-eyes="open"], [data-mouth="rest"], [data-hand="rest"]) { display: inline; }
+.seat-actor[data-mood="ready"] [data-pupils] { transform: translate(2px, 1px); }
+.seat-actor[data-gesture="discard"] [data-pupils] { transform: translate(3px, 1px); }
+.seat-actor[data-gesture="gather"] [data-pupils] { transform: translate(1px, 2px); }
+.seat-actor:is([data-gesture="discard"], [data-gesture="call"], [data-gesture="win"], [data-gesture="loss"], [data-mood="win"], [data-mood="loss"]) [data-mouth="rest"] {
+  display: none;
+}
+.seat-actor[data-gesture="discard"] [data-mouth="focus"],
+.seat-actor[data-gesture="call"] [data-mouth="call"],
+.seat-actor:is([data-gesture="win"], [data-mood="win"]) [data-mouth="win"],
+.seat-actor:is([data-gesture="loss"], [data-mood="loss"]) [data-mouth="loss"] { display: inline; }
+
+.seat-actor[data-gesture="call"] [data-brows] { transform: translateY(-4px); }
+.seat-actor:is([data-gesture="win"], [data-mood="win"], [data-gesture="loss"], [data-mood="loss"]) [data-eyes="open"] {
+  display: none;
+}
+.seat-actor:is([data-gesture="win"], [data-mood="win"]) [data-eyes="win"],
+.seat-actor:is([data-gesture="loss"], [data-mood="loss"]) [data-eyes="loss"] { display: inline; }
+.seat-actor:is([data-gesture="win"], [data-mood="win"]) [data-brows] { transform: translateY(-3px); }
+.seat-actor:is([data-gesture="loss"], [data-mood="loss"]) [data-brows] { transform: rotate(7deg); }
+
+.seat-actor[data-gesture] [data-main-paw] [data-hand="rest"],
+.seat-actor:is([data-gesture="win"], [data-gesture="gather"]) [data-hand="rest"] { display: none; }
+.seat-actor[data-gesture="discard"] [data-main-paw] [data-hand="rest"] { display: inline; }
+.seat-actor:is([data-gesture="discard"], [data-gesture="gather"], [data-gesture="loss"]) [data-main-paw] [data-hand="open"],
+.seat-actor[data-gesture="gather"] [data-hand="open"],
+.seat-actor[data-gesture="call"] [data-main-paw] [data-hand="point"],
+.seat-actor[data-gesture="win"] [data-hand="fist"] { display: inline; }

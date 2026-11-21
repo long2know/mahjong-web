@@ -367,6 +367,8 @@ class LanternTable {
     });
     leave.disabled = !this.session.available;
     this.modal.show("settings", "Settings", form, this.settingsButton);
+    void import("./fullscreen").then(module => module.addFullscreen(actions),
+      () => actions.before(el("p", "note", "Full screen unavailable.")));
   }
 
   private async saveSettings(name: string, preferences: Preferences, form: HTMLElement, save: HTMLButtonElement, note: HTMLElement): Promise<void> {

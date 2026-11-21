@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Mahjong.Rules;
 using static Mahjong.Rules.Tests.Fixture;
 
@@ -52,6 +53,7 @@ public sealed class KongTests
         Assert.Equal("open", Assert.Single(done.Seats[2].Melds).Method);
         Assert.Equal("c5", Tiles.Face(done.Seats[2].Drawn!.Value));
         Assert.True(Has(done, 2, "hu"));
+        Assert.Equal(2, ChangshaEngine.ViewPublic(done).KongRoll!.Seat);
     }
 
     [Fact]
@@ -80,19 +82,45 @@ public sealed class KongTests
         [
             "b9 b9 b9 b9 b1 b2 b3 c1 c2 c3 d1 d2 d3 c5",
             "b7 b8 c1 c2 c3 d1 d2 d3 d4 d5 d6 c8 c8", "", ""
-        ], "d9 c5");
+        ], "d9 c5", melds: [new(2, "bu", "d8 d8 d8 d8", null, "concealed")]);
         var old = Checkpoint(state);
         var done = Select(state, 0, "bu", "b9");
         Assert.Equal(old, Checkpoint(state));
         Assert.Equal(DecisionKind.Turn, done.Window!.Kind);
-        var meld = Assert.Single(ChangshaEngine.ViewPublic(done).Seats[0].Melds);
+        var ongoing = ChangshaEngine.ViewPublic(done);
+        Assert.Null(ongoing.Settlement);
+        var meld = Assert.Single(ongoing.Seats[0].Melds);
         Assert.Equal("concealed", meld.Method);
         Assert.Null(meld.FromSeat);
         Assert.Equal(new string?[] { null, null, null, null }, meld.Tiles);
         Assert.Empty(ChangshaEngine.ViewSeat(done, 1).LegalOptions);
-        var settlement = Select(done, 0, "hu").Settlement!;
+        var won = Select(done, 0, "hu");
+        var settlement = won.Settlement!;
         Assert.Equal("plain", Assert.Single(Assert.Single(settlement.Winners).Patterns).Code);
-        Assert.Equal("c5", Assert.Single(Assert.Single(settlement.Winners).WinningTiles));
+
+        var saved = Checkpoint(won);
+        var json = JsonSerializer.SerializeToElement(ChangshaEngine.ViewPublic(won), CheckpointJson);
+        var winner = Assert.Single(json.GetProperty("settlement").GetProperty("winners").EnumerateArray());
+        Assert.Equal("c5", Assert.Single(winner.GetProperty("winningTiles").EnumerateArray()).GetString());
+        var hand = winner.GetProperty("winningHand");
+        Assert.Equal(new[] { "b1", "b2", "b3", "c1", "c2", "c3", "c5", "d1", "d2", "d3" },
+            hand.GetProperty("concealedTiles").EnumerateArray().Select(tile => tile.GetString()));
+        Assert.Equal(new[] { "concealedTiles", "melds" }, hand.EnumerateObject().Select(field => field.Name).Order());
+        var shownMeld = Assert.Single(hand.GetProperty("melds").EnumerateArray());
+        Assert.Equal("bu", shownMeld.GetProperty("kind").GetString());
+        Assert.Equal("concealed", shownMeld.GetProperty("method").GetString());
+        Assert.Equal(JsonValueKind.Null, shownMeld.GetProperty("fromSeat").ValueKind);
+        Assert.Equal(new[] { "b9", "b9", "b9", "b9" }, shownMeld.GetProperty("tiles").EnumerateArray().Select(tile => tile.GetString()));
+        Assert.Equal(new[] { "fromSeat", "kind", "method", "tiles" }, shownMeld.EnumerateObject().Select(field => field.Name).Order());
+        foreach (var seat in new[] { 0, 2 })
+        {
+            var tableMeld = Assert.Single(json.GetProperty("seats")[seat].GetProperty("melds").EnumerateArray());
+            Assert.Equal("[null,null,null,null]", tableMeld.GetProperty("tiles").GetRawText());
+        }
+
+        Assert.DoesNotContain("\"winningHand\"", saved);
+        Assert.Equal(saved, Checkpoint(won));
+        Assert.Equal(json.GetRawText(), Checkpoint(ChangshaEngine.ViewPublic(RoundTrip(won))));
     }
 
     [Theory]
@@ -103,6 +131,8 @@ public sealed class KongTests
         var state = Added();
         var pending = Select(state, 0, kind, "b5");
         var view = ChangshaEngine.ViewPublic(pending);
+        Assert.Null(view.Settlement);
+        Assert.Null(view.KongRoll);
         Assert.Equal("kong", view.Window!.Reason);
         Assert.Equal("b5", Assert.Single(view.Window.Trigger!.Faces));
         Assert.Equal("peng", Assert.Single(view.Seats[0].Melds).Kind);
@@ -124,21 +154,41 @@ public sealed class KongTests
         Assert.Equal(pending.Window!.Trigger, robbed.ClaimedWinTile);
         Assert.DoesNotContain(pending.Window.Trigger!.Value, robbed.Seats[0].Hand);
         AssertBalanced(settlement, -points, points, 0, 0);
+
+        var terminal = ChangshaEngine.ViewPublic(robbed);
+        Assert.Null(terminal.KongRoll);
+        var projected = Assert.Single(terminal.Settlement!.Winners);
+        Assert.Equal("b5", Assert.Single(projected.WinningTiles));
+        Assert.Equal(new[] { "b3", "b4", "c4", "c5", "c5", "c5", "c6", "d4", "d5", "d6", "d7", "d8", "d9" },
+            projected.WinningHand.ConcealedTiles);
+        Assert.Empty(projected.WinningHand.Melds);
     }
 
-    [Fact]
-    public void AddedBuFinishesAfterPassAndRetainsSourceOfTheOriginalMeld()
+    [Theory]
+    [InlineData("bu", "c9")]
+    [InlineData("gang", "c2")]
+    public void AddedKongFinishesAfterPassAndRetainsSourceOfTheOriginalMeld(string kind, string replacement)
     {
-        var pending = Select(Added(), 0, "bu", "b5");
+        var pending = Select(Added(), 0, kind, "b5");
+        Assert.Null(ChangshaEngine.ViewPublic(pending).KongRoll);
         var done = Expire(pending);
         Assert.Equal(Checkpoint(done), Checkpoint(Expire(RoundTrip(pending))));
-        var meld = Assert.Single(ChangshaEngine.ViewPublic(done).Seats[0].Melds);
-        Assert.Equal("bu", meld.Kind);
+        var view = ChangshaEngine.ViewPublic(done);
+        var meld = Assert.Single(view.Seats[0].Melds);
+        Assert.Equal(kind, meld.Kind);
         Assert.Equal("added", meld.Method);
         Assert.Equal(3, meld.FromSeat);
         Assert.Equal(new[] { "b5", "b5", "b5", "b5" }, meld.Tiles);
-        Assert.Equal("c9", Tiles.Face(done.Seats[0].Drawn!.Value));
+        Assert.Equal(replacement, Tiles.Face(done.Seats[0].Drawn!.Value));
         Assert.Equal(DecisionKind.Turn, done.Window!.Kind);
+        if (kind == "gang")
+        {
+            var roll = Assert.IsType<PublicKongRoll>(view.KongRoll);
+            Assert.Equal(new[] { 5, 2 }, roll.Dice);
+            Assert.Equal(2, roll.LowerDie);
+        }
+        else
+            Assert.Null(view.KongRoll);
     }
 
     [Fact]
@@ -157,11 +207,27 @@ public sealed class KongTests
         [
             "b9 b9 b9 b9 b1 b2 b3 c1 c2 c3 d1 d2 d3 c5", "", "", ""
         ], "b5 d7 d8 c5 b7 b8", dealer: 2, seed: RolledSeed);
-        var after = Select(state, 0, "gang", "b9");
+        Assert.Null(ChangshaEngine.ViewPublic(state).KongRoll);
+        var rolledAt = Now.AddSeconds(3);
+        var after = Select(state, 0, "gang", "b9", now: rolledAt);
+        var view = ChangshaEngine.ViewPublic(after);
+        var json = JsonSerializer.SerializeToElement(view, CheckpointJson);
+        var roll = json.GetProperty("kongRoll");
+        Assert.Equal(0, roll.GetProperty("seat").GetInt32());
+        Assert.Equal(new[] { 4, 1 }, roll.GetProperty("dice").EnumerateArray().Select(die => die.GetInt32()));
+        Assert.Equal(1, roll.GetProperty("lowerDie").GetInt32());
+        Assert.Equal(new[] { "dice", "lowerDie", "seat" }, roll.EnumerateObject().Select(field => field.Name).Order());
+        Assert.Equal(rolledAt + state.Start.TurnLimit, view.Window!.ClosesAtGameTime);
+        Assert.Null(view.Window.Trigger);
+        Assert.DoesNotContain("\"kongRoll\"", Checkpoint(after));
+        Assert.Equal(json.GetRawText(), Checkpoint(ChangshaEngine.ViewPublic(RoundTrip(after))));
+
         Assert.Equal("c5", Tiles.Face(after.Seats[0].Drawn!.Value));
         Assert.Equal(new[] { "b5", "d7", "d8", "b7", "b8" }, after.Wall.Select(tile => Tiles.Face(tile.Tile)));
-        Assert.Single(ChangshaEngine.ViewSeat(after, 0).LegalOptions, option => option.Kind == "discard");
-        var settle = Select(after, 0, "hu").Settlement!;
+        Assert.Equal(new[] { "hu", "discard" }, ChangshaEngine.ViewSeat(after, 0).LegalOptions.Select(option => option.Kind));
+        var won = Select(after, 0, "hu");
+        Assert.Null(ChangshaEngine.ViewPublic(won).KongRoll);
+        var settle = won.Settlement!;
         Assert.Equal("kongBloom", Assert.Single(Assert.Single(settle.Winners).Patterns).Code);
         AssertBalanced(settle, 14, -3, -8, -3);
     }
@@ -175,10 +241,13 @@ public sealed class KongTests
             "b4 b5 b6 c4 c6 d4 d5 d6 d7 d8 d9 c8 c8", "c5 c5", ""
         ], "b5 d7 d8 c5 b7 b8", dealer: 2, seed: RolledSeed);
         var missed = Select(state, 0, "gang", "b9");
+        Assert.NotNull(ChangshaEngine.ViewPublic(missed).KongRoll);
         Assert.False(Has(missed, 0, "hu"));
         Assert.Equal("c5", Assert.Single(Assert.Single(ChangshaEngine.ViewSeat(missed, 0).LegalOptions).Faces));
         var cannon = Select(missed, 0, "discard");
-        Assert.Equal("kong", ChangshaEngine.ViewPublic(cannon).Window!.Reason);
+        var claim = ChangshaEngine.ViewPublic(cannon);
+        Assert.Equal("kong", claim.Window!.Reason);
+        Assert.Null(claim.KongRoll);
         Assert.Equal(new[] { "hu", "pass" }, ChangshaEngine.ViewSeat(cannon, 1).LegalOptions.Select(option => option.Kind));
         Assert.Empty(ChangshaEngine.ViewSeat(cannon, 2).LegalOptions);
         var win = Select(cannon, 1, "hu");
@@ -190,7 +259,9 @@ public sealed class KongTests
         var continued = Expire(cannon);
         for (var step = 0; step < 20 && ChangshaEngine.ViewPublic(continued).TurnSeat != 0; step++)
             continued = Expire(continued);
-        Assert.Equal(0, ChangshaEngine.ViewPublic(continued).TurnSeat);
+        var continuedView = ChangshaEngine.ViewPublic(continued);
+        Assert.Equal(0, continuedView.TurnSeat);
+        Assert.Null(continuedView.KongRoll);
         Assert.True(continued.Seats[0].FrozenAfterGang);
         Assert.Single(ChangshaEngine.ViewSeat(continued, 0).LegalOptions, option => option.Kind == "discard");
     }

@@ -41,7 +41,7 @@ export function reconcile<T, N extends HTMLElement>(
 }
 
 export const winds = ["East", "South", "West", "North"] as const;
-export const places = ["near", "left", "far", "right"] as const;
+export const places = ["near", "right", "far", "left"] as const;
 
 export function wind(seat: number, dealer: number): typeof winds[number] {
   return winds[(seat - dealer + 4) % 4];

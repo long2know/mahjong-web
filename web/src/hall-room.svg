@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 300" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="plaster" x2="0" y2="1">
+      <stop stop-color="#181720"/>
+      <stop offset=".52" stop-color="#412b31"/>
+      <stop offset="1" stop-color="#231c25"/>
+    </linearGradient>
+    <linearGradient id="paper" x2=".15" y2="1">
+      <stop stop-color="#283837"/>
+      <stop offset=".5" stop-color="#566052"/>
+      <stop offset="1" stop-color="#574739"/>
+    </linearGradient>
+    <linearGradient id="timber">
+      <stop stop-color="#15131a"/>
+      <stop offset=".25" stop-color="#3d282a"/>
+      <stop offset=".47" stop-color="#6b4236"/>
+      <stop offset=".58" stop-color="#4b2f2c"/>
+      <stop offset=".94" stop-color="#20181f"/>
+      <stop offset="1" stop-color="#110f17"/>
+    </linearGradient>
+    <pattern id="lattice" width="72" height="72" patternUnits="userSpaceOnUse">
+      <path d="M0 0h72v72H0ZM0 17h17V0m38 0v17h17M0 55h17v17m38 0V55h17M0 36h9l27-27 27 27h9M9 36l27 27 27-27" fill="none" stroke="#1b2226" stroke-width="2.5"/>
+      <path d="M18 36l18-18 18 18-18 18Z" fill="none" stroke="#bd9b73" stroke-opacity=".3"/>
+    </pattern>
+    <path id="screens" d="M78 64h422v165H78zm862 0h422v165H940zM551 77h338v152H551z"/>
+    <clipPath id="panels"><use href="#screens"/></clipPath>
+    <g id="post">
+      <path d="M-15 28h30v245h-30z" fill="url(#timber)"/>
+      <path d="M-10 48v209m21-209v209" stroke="#bd8252" stroke-opacity=".33"/>
+      <path d="M-22 35h44v13h-44zm-19 27h38v10h-38zm44 0h38v10H3zM-22 240h44v21h-44z" fill="#2b2024" stroke="#654337"/>
+      <path d="M-18 244h36m-36 11h36" stroke="#9e684c" stroke-opacity=".52"/>
+    </g>
+    <pattern id="sill" width="116" height="15" patternUnits="userSpaceOnUse">
+      <path d="M0 7h40l7-4h22l7 4h40M47 7h22l-5 4H52Z" fill="none" stroke="#b4815c" stroke-opacity=".36"/>
+    </pattern>
+  </defs>
+  <path d="M0 0h1440v300H0z" fill="url(#plaster)"/>
+  <path d="M58 50h460v190H58zm864 0h460v190H922zM533 63h374v177H533z" fill="#21191f" stroke="#9c674b" stroke-opacity=".55" stroke-width="2"/>
+  <use href="#screens" fill="url(#paper)"/>
+  <g clip-path="url(#panels)">
+    <path d="M0 192q70-10 109-36t74 4q43 16 73-25t86-28q38 20 57 53 24 31 102 53L551 188q84-43 110-26 44 31 91-14 40-30 137 21l51 24q43-11 71-52t83-29q29 8 51 35t57 7q28-16 54 19t84 34l80-9v52H0Z" fill="#34453e"/>
+    <path d="M0 213q115 8 205-29 61-28 108-1 67 34 162 25l76-7q94-19 160 6 65 21 178-12l51 12q101 0 162-28 48-19 103 11 69 39 235 19v41H0Z" fill="#273639"/>
+    <path d="M78 64h422v165H78zm862 0h422v165H940z" fill="url(#lattice)" opacity=".8"/>
+    <g fill="none" stroke="#a68565" stroke-opacity=".46">
+      <path d="M551 88h338M551 215h338m-282-138v152m57-152v152m112-152v152m57-152v152M79 120h421m440 0h422"/>
+      <circle cx="720" cy="147" r="44"/>
+      <path d="M672 147h-28m124 0h28m-76-48V88m0 107v20"/>
+    </g>
+  </g>
+  <use href="#screens" fill="none" stroke="#9a765c" stroke-opacity=".55"/>
+  <path d="M0 228h1440v72H0z" fill="#282022"/>
+  <path d="M0 233h1440v15H0z" fill="url(#sill)"/>
+  <path d="M0 257h1440v4H0zm0 20h1440v3H0z" fill="#684334"/>
+  <path d="M0 261h1440v16H0zm0 19h1440v20H0z" fill="#19171c"/>
+  <path d="M0 229h1440m-1440 21h1440" stroke="#8c5c45" stroke-opacity=".62"/>
+  <use href="#post" x="48"/>
+  <use href="#post" x="522"/>
+  <use href="#post" x="918"/>
+  <use href="#post" x="1392"/>
+  <path d="M0 0h1440v25H0zM0 36h1440v10H0z" fill="#17131a"/>
+  <path d="M0 14h1440v14H0z" fill="#432b2b"/>
+  <path d="M0 26h1440m-1440 20h1440" stroke="#8a5b44" stroke-opacity=".64"/>
+  <path d="M49 28h186l-15 7H73zM501 28h438l-22 8H523zm704 0h186l-24 7h-147z" fill="#774c39" opacity=".58"/>
+</svg>

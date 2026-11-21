@@ -1,0 +1,90 @@
+.board-plane:has(> .board-center--dial) > .board-well { z-index: -2; }
+
+.play .board-center--dial {
+  --dial-size: clamp(84px, 11vw, 134px);
+  z-index: -1;
+  width: var(--dial-size);
+  height: var(--dial-size);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
+  gap: 2px;
+}
+
+.board-center--dial .table-caption {
+  color: #c4d6be;
+  font-size: clamp(.52rem, .8vw, .65rem);
+  letter-spacing: .045em;
+  line-height: 1;
+}
+
+.board-center--dial .center-wall { font-size: .64rem; line-height: 1; }
+.board-center--dial .wall-count { font-size: clamp(1.04rem, 2.2vw, 1.68rem); }
+.board-center--dial .center-trigger {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.hall-dial-plate {
+  --dial-ceramic: #315a4c;
+  --dial-active: #8d5f31;
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, #1d392f 4%, #102921 38%, #a67e48 39%, #211e1a 41%, transparent 42%),
+    radial-gradient(circle at 37% 23%, #f9d99b26, transparent 50%, #0c212130 68%),
+    repeating-conic-gradient(from 44deg, #13241e 0 1.5deg, #d6aa686b 1.5deg 2deg, transparent 2.4deg 90deg),
+    conic-gradient(from 45deg, var(--dial-right, var(--dial-ceramic)) 0 25%,
+      var(--dial-near, var(--dial-ceramic)) 25% 50%, var(--dial-left, var(--dial-ceramic)) 50% 75%,
+      var(--dial-far, var(--dial-ceramic)) 75% 100%);
+  box-shadow: inset 0 0 0 1px #cf985b, inset 0 0 0 3px #463024, inset 0 0 0 4px #cd9c645e,
+    0 3px #281f1b, 0 5px 8px #081e1bcc;
+}
+
+.hall-dial-plate[data-lit="right"] { --dial-right: var(--dial-active); }
+.hall-dial-plate[data-lit="near"] { --dial-near: var(--dial-active); }
+.hall-dial-plate[data-lit="left"] { --dial-left: var(--dial-active); }
+.hall-dial-plate[data-lit="far"] { --dial-far: var(--dial-active); }
+
+.hall-dial-wind {
+  position: absolute;
+  left: var(--x, 50%);
+  top: var(--y, 50%);
+  transform: translate(-50%, -50%);
+  color: #bed4bd;
+  font: 700 clamp(.59rem, 1.05vw, .82rem)/1 Georgia, serif;
+  text-shadow: 0 1px #102623;
+}
+.hall-dial-wind[data-lit] { color: #ffe09d; }
+.hall-dial-wind--right { --x: 86%; }
+.hall-dial-wind--left { --x: 14%; }
+.hall-dial-wind--near { --y: 86%; }
+.hall-dial-wind--far { --y: 14%; }
+
+.hall-dial-roll {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+.hall-dial-die {
+  display: block;
+  width: clamp(11px, 1.2vw, 16px);
+  border-radius: 2px;
+  background: linear-gradient(140deg, #faecd1, #d3b479);
+  fill: #294536;
+  box-shadow: 0 1px #936c43;
+}
+.hall-dial-low { color: #f0cb8e; font-size: .58rem; font-weight: 750; line-height: 1; white-space: nowrap; }
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .play .board-center--dial { --dial-size: clamp(70px, 10.2vw, 91px); gap: 1px; }
+}

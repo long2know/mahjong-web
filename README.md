@@ -4,6 +4,20 @@ A self-hosted, four-seat Changsha Mahjong table for phones and desktop browsers.
 
 The [Changsha rules profile](docs/rules.md) and table presentation are provisional. See the [browser evidence and its limits](docs/browser-validation.md), [architecture](docs/architecture.md), and [wire protocol](docs/protocol.md).
 
+## Run the published image
+
+After [CI verifies the public GHCR image](docs/operations.md#run-the-published-image), run it on a Linux/amd64 Docker host. Choose an unused named volume; don't reuse or delete the legacy Mahjong Autotable volume.
+
+```sh
+docker run -d --name lantern-table --restart unless-stopped --pull=always --platform linux/amd64 \
+  --publish 127.0.0.1:8911:8080 --mount type=volume,source=lantern-table-data,target=/data \
+  --cap-drop ALL --security-opt no-new-privileges:true \
+  --env Mahjong__AllowHttpLoopbackOrigin=true \
+  ghcr.io/long2know/mahjong-web:latest
+```
+
+Open [http://127.0.0.1:8911](http://127.0.0.1:8911); change `8911` if needed. No JWT or app credentials are required: the browser gets a guest cookie. Stop with `docker stop lantern-table` to keep the data. Use the [HTTPS runbook](docs/operations.md#https-for-other-devices) for access from other devices; serve the app at the root of its own origin.
+
 ## Run from source
 
 Install the exact [.NET 10 SDK](global.json) and Node.js **26.13.1** LTS. From the repository root:

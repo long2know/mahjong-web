@@ -15,7 +15,9 @@ public sealed class OpeningTests
             "",
             ""
         ]);
-        var opening = ChangshaEngine.ViewPublic(initial).Window!;
+        var publicOpening = ChangshaEngine.ViewPublic(initial);
+        Assert.Null(publicOpening.Settlement);
+        var opening = publicOpening.Window!;
         Assert.Equal("opening", opening.Reason);
         Assert.Null(opening.Trigger);
         Assert.Equal(Now + initial.Start.ClaimLimit, opening.ClosesAtGameTime);
@@ -48,6 +50,10 @@ public sealed class OpeningTests
         Assert.Empty(ended.Settlement.Winners);
         Assert.All(ended.Settlement.Transfers, transfer => Assert.Equal("opening", transfer.Reason));
         AssertBalanced(ended.Settlement, 12, -4, -4, -4);
+        var publicDraw = ChangshaEngine.ViewPublic(ended);
+        Assert.Null(publicDraw.KongRoll);
+        Assert.Equal("draw", publicDraw.Settlement!.Reason);
+        Assert.Empty(publicDraw.Settlement.Winners);
     }
 
     [Fact]

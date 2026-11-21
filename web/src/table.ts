@@ -1,11 +1,12 @@
+import type { ActorMoment, SeatCast } from "./actors";
 import { button, el, places, reconcile, text, wind } from "./dom";
 import { center, seatSpot, TableEffects } from "./effects";
 import type { Game, GameSeat, Meld, Option, OptionKind, RoomSeat, Seat, Snapshot, Tile } from "./protocol";
 import { faceName, tileFace, tileLabel } from "./tile";
 
-const meldNames = { chi: "Chi", peng: "Peng", gang: "Kong", bu: "Supplement" } as const;
+const meldNames = { chi: "Chow", peng: "Peng", gang: "Kong", bu: "Supplement" } as const;
 const optionNames: Record<OptionKind, string> = {
-  discard: "Discard", draw: "Draw", chi: "Chi", peng: "Peng", gang: "Kong", bu: "Supplement",
+  discard: "Discard", draw: "Draw", chi: "Chow", peng: "Peng", gang: "Roll for Kong", bu: "Supplement",
   hu: "Hu · Win", pass: "Pass", reveal: "Reveal",
 };
 const choiceOrder: OptionKind[] = ["hu", "reveal", "gang", "bu", "peng", "chi", "draw", "pass"];
@@ -35,7 +36,7 @@ function meldGroup(meld: Meld, local: boolean, index: number): HTMLElement {
   return node;
 }
 
-function setMelds(parent: HTMLElement, melds: Meld[], dealer: Seat, local = false): void {
+export function setMelds(parent: HTMLElement, melds: Meld[], dealer: Seat, local = false): void {
   reconcile(parent, melds, meldKey, (meld, index) => meldGroup(meld, local, index), (node, meld) => {
     const from = meld.fromSeat === null ? null : wind(meld.fromSeat, dealer);
     const method = meld.method === "added" ? "Added " : meld.method === "concealed" ? "Concealed " : "";
@@ -165,7 +166,10 @@ export class TableView {
   private readonly pauseButton: HTMLButtonElement;
   private readonly reduceMotion = matchMedia(reducedMotionQuery);
   private readonly effects = new TableEffects();
-  private needsVisibleBaseline = false;
+  #cast?: SeatCast;
+  #castLoad?: Promise<void>;
+  #pendingCast?: (cast: SeatCast) => void;
+  #needsVisibleBaseline = false;
   private state: Snapshot | null = null;
   private canAct = false;
   private selection: string | null = null;
@@ -204,6 +208,7 @@ export class TableView {
     this.root.append(status, this.stage, rack, actions, this.effects.root);
     const stopMotion = () => {
       this.effects.clear();
+      this.#clearCast();
       this.hooks.motionStopped?.();
     };
     this.reduceMotion.addEventListener("change", event => { if (event.matches) stopMotion(); });
@@ -212,9 +217,21 @@ export class TableView {
       attributes: true, attributeFilter: ["data-reduced-motion"],
     });
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) this.needsVisibleBaseline = true;
+      if (document.hidden) this.#needsVisibleBaseline = true;
       stopIfStill();
     });
+    const viewport = window.visualViewport;
+    const size = () => [innerWidth, innerHeight, viewport?.width, viewport?.height, viewport?.scale].join();
+    let dimensions = size();
+    const resizeCast = () => {
+      const current = size();
+      if (current !== dimensions) {
+        dimensions = current;
+        this.#clearCast();
+      }
+    };
+    window.addEventListener("resize", resizeCast);
+    viewport?.addEventListener("resize", resizeCast);
     rack.addEventListener("keydown", event => {
       if (event.key === "Escape" && this.selection) {
         this.selection = null;
@@ -250,27 +267,60 @@ export class TableView {
       !matchMedia(reducedMotionQuery).matches;
   }
 
+  async #loadCast(): Promise<void> {
+    const layer = el("div", "seat-cast");
+    try {
+      const { SeatCast } = await import("./actors");
+      layer.setAttribute("aria-hidden", "true");
+      const cast = this.#cast = new SeatCast(layer, this.plane.querySelector<HTMLElement>(".board-center")!);
+      this.plane.after(layer);
+      const state = this.state;
+      if (state?.game && this.stage.isConnected) {
+        cast.present(state);
+        this.#pendingCast?.(cast);
+      }
+      this.#pendingCast = undefined;
+    } catch (error) {
+      this.#cast = this.#pendingCast = undefined;
+      layer.remove();
+      console.warn("Seat art unavailable.", error);
+    }
+  }
+
+  #clearCast(): void {
+    this.#pendingCast = undefined;
+    this.#cast?.clear();
+  }
+
   update(state: Snapshot, canAct: boolean, now: number, effect = false): TableCue | undefined {
     const game = state.game;
     const previous = this.state;
     this.state = state;
     const { self, room } = state;
     const sameTable = previous?.roomId === state.roomId && previous.self.seat === self.seat;
+    const sameHand = previous?.game?.handNumber === game?.handNumber;
+    const settling = game?.settlement && !previous?.game?.settlement;
     const changed = !sameTable || previous.gameRevision !== state.gameRevision;
     const live = sameTable && effect && previous.gameRevision + 1 === state.gameRevision &&
-      !previous.room.paused && !room.paused && !document.hidden && !this.needsVisibleBaseline;
+      !previous.room.paused && !room.paused && !document.hidden && !this.#needsVisibleBaseline;
     // A snapshot delivered after the browser was suspended might be a queued commit.
-    if (changed) this.needsVisibleBaseline = false;
-    if (changed || room.paused || !this.motionEnabled) this.effects.clear();
+    if (changed) this.#needsVisibleBaseline = false;
+    const still = room.paused || !this.motionEnabled;
+    if (changed || still) this.effects.clear();
+    if ((!live && changed) || still || !sameHand || settling) this.#clearCast();
+    else if (changed) this.#pendingCast = undefined;
+    this.#castLoad ??= this.#loadCast();
     if (!game) return;
-    const motion = live && this.motionEnabled;
-    const priorGame = live && previous.game?.handNumber === game.handNumber ? previous.game : null;
+    const motion = live && !still;
+    const cast = this.#cast;
+    cast?.present(state, motion);
+    const priorGame = live && sameHand ? previous.game : null;
     const deal = motion && room.status === "playing" && !game.settlement && (
       previous.room.status === "waiting" && !previous.game && game.handNumber === 1 ||
       previous.room.status === "betweenHands" && previous.game?.settlement &&
         game.handNumber === previous.game.handNumber + 1
     );
-    const newSettlement = !!priorGame && !!game.settlement && !priorGame.settlement;
+    const newSettlement = priorGame && settling;
     let discardOrigin: ReturnType<typeof center> | undefined;
     if (motion && priorGame) {
       const oldRiver = priorGame.seats.find(item => item.seat === self.seat)?.discards;
@@ -302,9 +352,9 @@ export class TableView {
     this.pauseButton.disabled = !canAct;
     text(this.pauseButton, room.paused ? "Resume" : "Pause");
 
-    const discards: { lane: Lane; face: Tile["face"]; own: boolean }[] = [];
-    const calls: { lane: Lane; kind: Meld["kind"] | "reveal" }[] = [];
-    const scores: { lane: Lane; delta: number; cause: string }[] = [];
+    const discards: { lane: Lane; seat: Seat; face: Tile["face"]; own: boolean }[] = [];
+    const calls: { lane: Lane; seat: Seat; kind: Meld["kind"] | "reveal" }[] = [];
+    const scores: { lane: Lane; seat: Seat; delta: number; cause: string }[] = [];
     this.lanes.forEach((lane, i) => {
       const seat = ((self.seat + i) % 4) as Seat;
       const lobby = room.seats.find(item => item.seat === seat);
@@ -320,7 +370,7 @@ export class TableView {
       updateLane(lane, lobby, table, self.seat, game.dealerSeat,
         game.turnSeat === seat && game.phase === "turn", count, pendingDiscard);
       if (before && table.discards.length === before.discards.length + 1) {
-        discards.push({ lane, face: table.discards.at(-1)!, own: seat === self.seat });
+        discards.push({ lane, seat, face: table.discards.at(-1)!, own: seat === self.seat });
       }
       if (seat === self.seat) {
         setMelds(this.melds, table.melds, game.dealerSeat, true);
@@ -333,7 +383,7 @@ export class TableView {
         lane.feedback.dataset.kind = score.delta < 0 ? "loss" : "score";
         const cause = winner?.winBy === "selfDraw" ? "Self-draw" : winner?.winBy === "robKong" ? "Rob kong" : winner ? "Hu" : "";
         text(lane.feedback, `${cause ? `${cause} · ` : ""}${signed(score.delta)}`);
-        if (newSettlement) scores.push({ lane, delta: score.delta, cause });
+        if (newSettlement) scores.push({ lane, seat, delta: score.delta, cause });
       } else if (changed || room.paused) {
         const meld = before && table.melds.find((item, index) => meldKey(item, index) !==
           (before.melds[index] && meldKey(before.melds[index], index)));
@@ -341,7 +391,7 @@ export class TableView {
         lane.feedback.hidden = !kind;
         lane.feedback.dataset.kind = "call";
         text(lane.feedback, kind === "reveal" ? "Reveal" : kind ? meldNames[kind] : "");
-        if (kind) calls.push({ lane, kind });
+        if (kind) calls.push({ lane, seat, kind });
       }
     });
 
@@ -365,6 +415,7 @@ export class TableView {
 
     const drawFlight = motion && priorGame && newDraw && !previous.self.hand.some(tile => tile.tileId === drawn.tileId);
     if (motion && (deal || drawFlight || discards.length || calls.length || scores.length)) {
+      const moments: ActorMoment[] = deal || drawFlight ? [{ seat: self.seat, gesture: "gather" }] : [];
       const surface = this.effects.root.getBoundingClientRect();
       const stage = this.stage.getBoundingClientRect();
       // Read the in-flow anchors before adding any overlay nodes.
@@ -380,27 +431,36 @@ export class TableView {
       }
       if (drawFlight) {
         const target = this.hand.lastElementChild!;
-        const from = center(this.lanes[1].wall), to = center(target);
+        const from = center(this.lanes[places.indexOf("left")].wall), to = center(target);
         render.push(() => this.effects.flight(surface, "draw", from, to, drawn.face, 0, target.querySelector(".tile-face") ?? undefined));
       }
-      for (const { lane, face, own } of discards) {
+      for (const { lane, seat, face, own } of discards) {
         const target = lane.river.lastElementChild!;
         const from = (own ? discardOrigin : undefined) ?? center(lane.label);
         const to = center(target);
+        moments.push({ seat, gesture: "discard", target });
         render.push(() => this.effects.flight(surface, "discard", from, to, face, 0, target.querySelector(".tile-face") ?? undefined));
       }
-      for (const { lane, kind } of calls) {
+      for (const { lane, seat, kind } of calls) {
         const spot = seatSpot(stage, lane.label);
+        moments.push({ seat, gesture: "call" });
         render.push(() => this.effects.stamp(surface, spot, kind));
       }
-      for (const { lane, delta, cause } of scores) {
+      for (const { lane, seat, delta, cause } of scores) {
         const spot = seatSpot(stage, lane.label);
         if (cause) render.push(() => this.effects.stamp(surface, spot, "win", cause === "Hu" ? "Hu · Win" : cause));
+        if (cause || delta < 0) moments.push({ seat, gesture: cause ? "win" : "loss" });
         if (delta) {
           const side = spot.x >= stage.x + stage.width * .48 ? -1 : 1;
           const point = cause ? { x: spot.x + side * 57, y: spot.y + 35 } : spot;
           render.push(() => this.effects.score(surface, point, signed(delta), delta > 0));
         }
+      }
+      if (cast) cast.play(moments);
+      // Only the newest committed cue may survive a briefly cold table chunk.
+      else if (moments.length) {
+        const until = performance.now() + 260;
+        this.#pendingCast = cast => { if (performance.now() < until && this.motionEnabled) cast.play(moments); };
       }
       render.forEach(paint => paint());
     }
@@ -444,6 +504,7 @@ export class TableView {
   clearEffects(): void {
     this.selection = null;
     this.effects.clear();
+    this.#clearCast();
     for (const { feedback } of this.lanes) {
       if (feedback.dataset.kind === "call") feedback.hidden = true;
     }

@@ -25,7 +25,8 @@ public enum MoveStatus
 public sealed record MoveResult(MoveStatus Status, GameState State);
 
 public sealed record PublicView(int HandNumber, int DealerSeat, string Phase, int? TurnSeat,
-    int WallCount, ImmutableArray<PublicSeat> Seats, PublicWindow? Window, Settlement? Settlement);
+    int WallCount, ImmutableArray<PublicSeat> Seats, PublicWindow? Window, PublicSettlement? Settlement,
+    PublicKongRoll? KongRoll);
 
 public sealed record PublicSeat(int Seat, int ConcealedCount, ImmutableArray<string> Discards,
     ImmutableArray<PublicMeld> Melds, ImmutableArray<string> RevealedTiles);
@@ -36,6 +37,19 @@ public sealed record PublicWindow(string WindowId, string Reason, DateTimeOffset
     PublicTrigger? Trigger);
 
 public sealed record PublicTrigger(int Seat, ImmutableArray<string> Faces);
+
+public sealed record PublicKongRoll(int Seat, ImmutableArray<int> Dice, int LowerDie);
+
+public sealed record PublicSettlement(string Reason, int NextDealerSeat, int? SourceSeat,
+    ImmutableArray<PublicWinner> Winners, ImmutableArray<string> Birds, ImmutableArray<SeatResult> SeatResults,
+    ImmutableArray<PayerTransfer> Transfers);
+
+public sealed record PublicWinner(int Seat, string WinBy, ImmutableArray<string> WinningTiles,
+    ImmutableArray<WinPattern> Patterns, PublicWinningHand WinningHand);
+
+public sealed record PublicWinningHand(ImmutableArray<string> ConcealedTiles, ImmutableArray<PublicWinningMeld> Melds);
+
+public sealed record PublicWinningMeld(string Kind, string? Method, int? FromSeat, ImmutableArray<string> Tiles);
 
 public sealed record SeatView(int Seat, ImmutableArray<HandTile> Hand, string? DrawnTileId,
     ImmutableArray<LegalOption> LegalOptions);

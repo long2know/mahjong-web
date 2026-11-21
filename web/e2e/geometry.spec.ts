@@ -267,11 +267,11 @@ function settlementMotion(page: Page) {
   });
 }
 
-test("committed feedback follows the right river, calls and scores without replaying on sync", async ({ page }) => {
+test("committed feedback follows the source river, calls and scores without replaying on sync", async ({ page }) => {
   await page.setViewportSize({ width: 800, height: 360 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto(`${fixture}?insets&feedback`);
-  const river = page.locator(".river--right");
+  const river = page.locator(".river--left");
   for (const kind of ["discard", "seabed", "cannon"] as const) {
     await page.evaluate(frame => {
       const { paint } = (window as FeedbackWindow).feedbackFixture;

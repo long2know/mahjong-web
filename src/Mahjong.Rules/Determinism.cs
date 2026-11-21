@@ -52,9 +52,15 @@ internal static class Determinism
 
     internal static int RollLowerDie(HandStart start, int window)
     {
+        var (first, second) = RollDice(start, window);
+        return Math.Min(first, second);
+    }
+
+    internal static (int First, int Second) RollDice(HandStart start, int window)
+    {
         var counter = 0;
-        return 1 + Math.Min(Bounded(start, DiceDomain, window, ref counter, 6),
-            Bounded(start, DiceDomain, window, ref counter, 6));
+        return (1 + Bounded(start, DiceDomain, window, ref counter, 6),
+            1 + Bounded(start, DiceDomain, window, ref counter, 6));
     }
 
     private static int Bounded(HandStart start, byte domain, int sequence, ref int counter, int bound)
