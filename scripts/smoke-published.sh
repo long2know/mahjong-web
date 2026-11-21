@@ -60,7 +60,7 @@ start_server() {
   local directory=$1 log=$2
   (
     cd -- "$publish"
-    exec env -u Mahjong__PublicOrigin -u DOTNET_ENVIRONMENT \
+    exec env -u Mahjong__BehindHttpsProxy -u Mahjong__PublicOrigin -u DOTNET_ENVIRONMENT \
       ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Production}" \
       Mahjong__DataDirectory="$directory" \
       BASE_URL="$mount" \

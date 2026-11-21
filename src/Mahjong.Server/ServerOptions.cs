@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Text.RegularExpressions;
 
@@ -6,7 +7,7 @@ namespace Mahjong.Server;
 internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IPAddress[] TrustedProxies, PathString PathBase,
     TimeSpan TurnLimit, TimeSpan ClaimLimit, TimeSpan BotDelay, TimeSpan PauseLimit, TimeSpan LeaseLimit,
     TimeSpan TickInterval, TimeSpan PruneInterval, TimeSpan TestClockOffset,
-    bool AllowDevelopmentHttp, bool AllowHttpLoopbackOrigin)
+    bool AllowDevelopmentHttp, bool AllowHttpLoopbackOrigin, bool BehindHttpsProxy)
 {
     public const int MessageLimit = 16 * 1024;
     public static readonly TimeSpan RoomIdleLimit = TimeSpan.FromHours(24);
@@ -30,11 +31,29 @@ internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IP
         if (testing.Exists() && !environment.IsEnvironment("Testing"))
             throw new InvalidOperationException("Mahjong:Testing overrides require the Testing environment.");
 
-        Uri? origin = null;
-        if (config["Mahjong:PublicOrigin"] is { } value && !TryOrigin(value, out origin))
-            throw new InvalidOperationException("Mahjong:PublicOrigin must be an HTTP(S) origin with no path or credentials.");
+        var behindHttpsProxy = config.GetValue<bool>("Mahjong:BehindHttpsProxy");
+        var trustedProxies = config.GetSection("Mahjong:TrustedProxies");
+        if (behindHttpsProxy)
+        {
+            if (trustedProxies.Exists())
+                throw new InvalidOperationException("Mahjong:BehindHttpsProxy cannot be combined with Mahjong:TrustedProxies.");
+            if (config.GetValue<bool>("FORWARDEDHEADERS_ENABLED") || config.GetValue<bool>("ASPNETCORE_FORWARDEDHEADERS_ENABLED"))
+                throw new InvalidOperationException("Mahjong:BehindHttpsProxy requires ASPNETCORE_FORWARDEDHEADERS_ENABLED to be disabled.");
+        }
 
-        var proxies = config.GetSection("Mahjong:TrustedProxies").GetChildren()
+        Uri? origin = null;
+        if (config["Mahjong:PublicOrigin"] is { } value)
+        {
+            if (behindHttpsProxy)
+            {
+                if (!TryAuthorityOrigin(value.EndsWith('/') ? value[..^1] : value, out origin) || origin.Scheme != "https")
+                    throw new InvalidOperationException("With Mahjong:BehindHttpsProxy, Mahjong:PublicOrigin must be an HTTPS origin with no path or credentials.");
+            }
+            else if (!TryOrigin(value, out origin))
+                throw new InvalidOperationException("Mahjong:PublicOrigin must be an HTTP(S) origin with no path or credentials.");
+        }
+
+        var proxies = trustedProxies.GetChildren()
             .Select(c => IPAddress.TryParse(c.Value, out var address) ? address
                 : throw new InvalidOperationException("Mahjong:TrustedProxies entries must be explicit IP addresses."))
             .ToArray();
@@ -49,7 +68,7 @@ internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IP
             TimeSpan.FromSeconds(ReadInt("PruneSeconds", 30, 1, 60)),
             TimeSpan.FromSeconds(ReadInt("UtcOffsetSeconds", 0, -172_800, 172_800)),
             environment.IsDevelopment() || environment.IsEnvironment("Testing"),
-            config.GetValue<bool>("Mahjong:AllowHttpLoopbackOrigin"));
+            config.GetValue<bool>("Mahjong:AllowHttpLoopbackOrigin"), behindHttpsProxy);
 
         int ReadInt(string key, int fallback, int minimum, int maximum)
         {
@@ -69,7 +88,7 @@ internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IP
         return new PathString(value.TrimEnd('/'));
     }
 
-    public static bool TryOrigin(string raw, out Uri? origin)
+    public static bool TryOrigin(string raw, [NotNullWhen(true)] out Uri? origin)
     {
         origin = null;
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)
@@ -82,24 +101,46 @@ internal sealed record ServerOptions(string DataDirectory, Uri? PublicOrigin, IP
         return true;
     }
 
+    private static bool TryAuthorityOrigin(string raw, [NotNullWhen(true)] out Uri? origin)
+    {
+        origin = null;
+        var delimiter = raw.IndexOf("://", StringComparison.Ordinal);
+        if (delimiter < 0 || raw.AsSpan(delimiter + 3).ContainsAny('/', '*', '%') || raw.EndsWith(':')
+            || !TryOrigin(raw, out var candidate) || !candidate.IsWellFormedOriginalString())
+            return false;
+        origin = candidate;
+        return true;
+    }
+
     public bool IsSameOrigin(HttpContext context)
     {
         var request = context.Request;
+        var headers = request.Headers.Origin;
+        if (BehindHttpsProxy)
+        {
+            // Only the origin check uses the TLS edge's scheme; the request and connection stay unchanged.
+            return headers.Count == 1 && TryAuthorityOrigin($"https://{request.Host}", out var edge)
+                && (PublicOrigin is null || OriginsMatch(PublicOrigin, edge))
+                && TryAuthorityOrigin(headers[0]!, out var browser) && OriginsMatch(edge, browser);
+        }
+
         if (!request.IsHttps && !AllowDevelopmentHttp)
         {
-            if (!TryOrigin($"http://{request.Host}", out var local) || !local!.IsLoopback
+            if (!TryOrigin($"http://{request.Host}", out var local) || !local.IsLoopback
                 || !(AllowHttpLoopbackOrigin || context.Connection.RemoteIpAddress is { } remote && IPAddress.IsLoopback(remote)))
                 return false;
         }
-        var headers = request.Headers.Origin;
         if (headers.Count != 1 || !TryOrigin(headers[0]!, out var supplied))
             return false;
         var expected = PublicOrigin;
         return (expected is not null || TryOrigin($"{request.Scheme}://{request.Host}", out expected))
-            && request.Scheme == expected!.Scheme && expected.Scheme == supplied!.Scheme
+            && request.Scheme == expected.Scheme && OriginsMatch(expected, supplied);
+    }
+
+    private static bool OriginsMatch(Uri expected, Uri supplied) =>
+        expected.Scheme == supplied.Scheme
             && expected.IdnHost.Equals(supplied.IdnHost, StringComparison.OrdinalIgnoreCase)
             && expected.Port == supplied.Port;
-    }
 }
 
 internal sealed class OffsetClock(TimeSpan offset) : TimeProvider

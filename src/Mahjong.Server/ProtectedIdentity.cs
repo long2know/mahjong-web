@@ -30,7 +30,7 @@ internal sealed class ProtectedIdentity(IDataProtectionProvider provider, Server
         context.Response.Cookies.Append(CookieName, _guest.Protect(id.ToString("N"), GuestLifetime),
             new CookieOptions
             {
-                HttpOnly = true, Secure = context.Request.IsHttps, SameSite = SameSiteMode.Lax,
+                HttpOnly = true, Secure = options.BehindHttpsProxy || context.Request.IsHttps, SameSite = SameSiteMode.Lax,
                 Path = options.PathBase.HasValue ? options.PathBase.Value : "/", MaxAge = GuestLifetime, IsEssential = true
             });
     }

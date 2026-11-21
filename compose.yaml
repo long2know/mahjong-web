@@ -11,6 +11,7 @@ services:
     environment:
       BASE_URL: ${BASE_URL:-/}
       Mahjong__AllowHttpLoopbackOrigin: ${Mahjong__AllowHttpLoopbackOrigin:-true}
+      Mahjong__BehindHttpsProxy:
       Mahjong__PublicOrigin:
       Mahjong__TrustedProxies__0:
     ports:

@@ -34,25 +34,28 @@ builder.Services.AddHostedService<RoomClock>();
 builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 builder.WebHost.ConfigureKestrel(server => server.Limits.MaxRequestBodySize = ServerOptions.MessageLimit);
-builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
+if (!options.BehindHttpsProxy)
 {
-    forwarded.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-        | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedPrefix;
-    forwarded.ForwardLimit = 1;
-    if (options.PublicOrigin is { } origin) forwarded.AllowedHosts.Add(origin.IdnHost);
-    forwarded.KnownIPNetworks.Clear();
-    forwarded.KnownProxies.Clear();
-    if (options.TrustedProxies.Length != 0)
+    builder.Services.Configure<ForwardedHeadersOptions>(forwarded =>
     {
-        foreach (var address in options.TrustedProxies) forwarded.KnownProxies.Add(address);
-    }
-    else
-    {
-        var defaults = new ForwardedHeadersOptions();
-        foreach (var network in defaults.KnownIPNetworks) forwarded.KnownIPNetworks.Add(network);
-        foreach (var address in defaults.KnownProxies) forwarded.KnownProxies.Add(address);
-    }
-});
+        forwarded.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+            | ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedPrefix;
+        forwarded.ForwardLimit = 1;
+        if (options.PublicOrigin is { } origin) forwarded.AllowedHosts.Add(origin.IdnHost);
+        forwarded.KnownIPNetworks.Clear();
+        forwarded.KnownProxies.Clear();
+        if (options.TrustedProxies.Length != 0)
+        {
+            foreach (var address in options.TrustedProxies) forwarded.KnownProxies.Add(address);
+        }
+        else
+        {
+            var defaults = new ForwardedHeadersOptions();
+            foreach (var network in defaults.KnownIPNetworks) forwarded.KnownIPNetworks.Add(network);
+            foreach (var address in defaults.KnownProxies) forwarded.KnownProxies.Add(address);
+        }
+    });
+}
 builder.Services.AddRateLimiter(rate =>
 {
     rate.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
