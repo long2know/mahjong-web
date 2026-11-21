@@ -28,6 +28,12 @@ internal sealed class Kestrel : IAsyncDisposable
 
     public void SetClockOffset(int seconds) => _configuration["Mahjong__Testing__UtcOffsetSeconds"] = seconds.ToString();
 
+    public Kestrel WithSetting(string name, string value)
+    {
+        _configuration[name] = value;
+        return this;
+    }
+
     public async Task StartAsync()
     {
         Assert.Null(_process);
@@ -43,6 +49,7 @@ internal sealed class Kestrel : IAsyncDisposable
         start.ArgumentList.Add("http://127.0.0.1:0");
         start.ArgumentList.Add("--Mahjong:DataDirectory");
         start.ArgumentList.Add(DataDirectory);
+        start.Environment.Remove("BASE_URL");
         foreach (var (key, value) in _configuration) start.Environment[key] = value;
 
         var ready = new TaskCompletionSource<Uri>(TaskCreationOptions.RunContinuationsAsynchronously);

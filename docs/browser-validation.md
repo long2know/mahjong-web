@@ -13,6 +13,16 @@ ASPNETCORE_ENVIRONMENT=Testing Mahjong__Testing__BotDelayMilliseconds=100 \
 
 The smoke starts a loopback host and uses disposable data; its restart test restores an offline archive into a fresh directory. Set `MAHJONG_GEOMETRY_PORT` to a free port (default `4179`) for the separate Vite fixtures. `npm --prefix web run test:geometry` runs just the geometry spec, which has no room API or WebSocket. The live specs use real TCP/HTTP/WebSocket connections, independent guest cookies, and SQLite. The transport test delays one actual stale command and drops one already-committed acknowledgement; it injects no game snapshots or choices.
 
+Run the same publish with a runtime mount and no Testing overrides:
+
+```sh
+SMOKE_PATH_BASE=/mahjong MAHJONG_GEOMETRY_PORT=46145 \
+  SMOKE_PLAYWRIGHT_OUTPUT_DIR=test-results/mounted PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report/mounted \
+  bash scripts/smoke-published.sh "$publish" "$version" "$revision" --with-browser
+```
+
+The mounted case follows a real invite across the `/mahjong` redirect, joins with an independent guest, starts a hand over WebSocket, and reloads into the same saved seat. It also reads the mounted entry and lazy JS/CSS, tile art, and cookie scope. The server's `BASE_URL` is a path; the smoke passes an absolute `BASE_URL` only to Playwright.
+
 To play the current checkout locally, use the [pinned .NET SDK](../global.json) and Node.js 26.13.1. From the checkout root:
 
 ```sh

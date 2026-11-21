@@ -1,3 +1,4 @@
+import { appPath } from "./paths";
 import { api, atLeast, parseServerMessage } from "./protocol";
 import type { Ack, Action, ClientMessage, Command, Guest, Lease, Revisions, Snapshot } from "./protocol";
 
@@ -131,9 +132,7 @@ export class TableSession {
     if (this.socket) return;
     this.status = this.roomId ? "syncing" : "connecting";
     this.hooks.change();
-    const url = new URL("/ws", location.href);
-    url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(appPath + "ws");
     this.socket = socket;
     this.waitForResponse(() => this.reconnectSocket());
     socket.addEventListener("message", event => {

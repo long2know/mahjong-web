@@ -9,6 +9,7 @@ services:
         BUILD_VERSION: ${BUILD_VERSION:-0.1.0}
         SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
     environment:
+      BASE_URL: ${BASE_URL:-/}
       Mahjong__AllowHttpLoopbackOrigin: ${Mahjong__AllowHttpLoopbackOrigin:-true}
       Mahjong__PublicOrigin:
       Mahjong__TrustedProxies__0:

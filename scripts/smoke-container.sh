@@ -46,6 +46,7 @@ printf 'Runtime image %s version=%s revision=%s\n' "$(docker image inspect --for
 
 start_container() {
   container=$(docker run -d --name "$name" --cap-drop ALL --security-opt no-new-privileges:true \
+    --env BASE_URL="${2:-/}" \
     --env Mahjong__AllowHttpLoopbackOrigin=true \
     --publish 127.0.0.1::8080 --mount "type=volume,source=$1,target=/data" "$image")
   origin="http://$(docker port "$container" 8080/tcp)"
@@ -107,4 +108,12 @@ docker run --rm -i --entrypoint tar --mount "type=volume,source=$restored,target
 
 start_container "$restored"
 node scripts/smoke-runtime.mjs resume "$origin" "$version" "$revision" "$state"
+stop_container
+
+mounted="$name-mounted"
+docker volume create "$mounted" >/dev/null
+volumes+=("$mounted")
+start_container "$mounted" /mahjong
+wait_healthy
+node scripts/smoke-runtime.mjs seed "$origin/mahjong/" "$version" "$revision" "$work/guest-mounted.json"
 stop_container

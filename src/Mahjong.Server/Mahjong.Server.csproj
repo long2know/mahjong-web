@@ -10,7 +10,9 @@
   <ItemGroup>
     <ProjectReference Include="../Mahjong.Rules/Mahjong.Rules.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15" />
-    <Content Include="../../web/dist/**/*" Exclude="../../web/dist/**/*.map"
+    <Content Include="../../web/dist/index.html" Condition="Exists('../../web/dist/index.html')"
+             Link="index.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../web/dist/**/*" Exclude="../../web/dist/index.html;../../web/dist/**/*.map"
              Link="wwwroot/%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

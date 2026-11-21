@@ -9,8 +9,8 @@ fi
 publish=$(realpath -- "$1")
 version=$2
 revision=$3
-if [[ ! -s "$publish/Mahjong.Server.dll" || ! -s "$publish/wwwroot/index.html" ]]; then
-  echo "Missing published server or wwwroot/index.html in $publish" >&2
+if [[ ! -s "$publish/Mahjong.Server.dll" || ! -s "$publish/index.html" ]]; then
+  echo "Missing published server or index.html in $publish" >&2
   exit 1
 fi
 for notice in LICENSE licenses/{THIRD-PARTY,Microsoft.NET-MIT,Apache-2.0,SQLitePCLRaw-NOTICE,Microsoft.Extensions.DependencyModel-NOTICES}.txt; do
@@ -28,6 +28,7 @@ data="$work/data"
 restored="$work/restored"
 archive="$work/data.tar"
 state="$work/guest.json"
+mount=${SMOKE_PATH_BASE:-}
 export TMPDIR="$work/scratch"
 mkdir -- "$TMPDIR"
 server_pid=
@@ -62,6 +63,7 @@ start_server() {
     exec env -u Mahjong__PublicOrigin -u DOTNET_ENVIRONMENT \
       ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Production}" \
       Mahjong__DataDirectory="$directory" \
+      BASE_URL="$mount" \
       dotnet ./Mahjong.Server.dll --urls http://127.0.0.1:0 \
       --Logging:LogLevel:Microsoft.Hosting.Lifetime=Information
   ) > "$log" 2>&1 &
@@ -80,10 +82,12 @@ start_server() {
 
 start_server "$data" "$work/server.log"
 if [[ ${4:-} == --with-browser ]]; then
-  BASE_URL="$origin" PLAYWRIGHT_HTML_OPEN=never npm --prefix web run test:e2e -- \
-    --project=chromium --project=webkit --reporter=line,html --output="${SMOKE_PLAYWRIGHT_OUTPUT_DIR:-test-results}"
+  specs=()
+  if [[ -n ${mount%/} ]]; then specs+=(e2e/mount.spec.ts); fi
+  BASE_URL="$origin${mount%/}/" PLAYWRIGHT_HTML_OPEN=never npm --prefix web run test:e2e -- \
+    --project=chromium --project=webkit --reporter=line,html --output="${SMOKE_PLAYWRIGHT_OUTPUT_DIR:-test-results}" "${specs[@]}"
 fi
-node scripts/smoke-runtime.mjs seed "$origin" "$version" "$revision" "$state"
+node scripts/smoke-runtime.mjs seed "$origin${mount%/}/" "$version" "$revision" "$state"
 stop_server
 
 test -s "$data/mahjong.db"
@@ -93,5 +97,5 @@ mkdir -- "$restored"
 tar -xpf "$archive" -C "$restored"
 
 start_server "$restored" "$work/restore.log"
-node scripts/smoke-runtime.mjs resume "$origin" "$version" "$revision" "$state"
+node scripts/smoke-runtime.mjs resume "$origin${mount%/}/" "$version" "$revision" "$state"
 stop_server

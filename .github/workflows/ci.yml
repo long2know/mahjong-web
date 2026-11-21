@@ -54,6 +54,12 @@ jobs:
           Mahjong__Testing__TurnSeconds: '30'
           Mahjong__Testing__ClaimSeconds: '8'
         run: bash scripts/smoke-published.sh artifacts/publish "$BUILD_VERSION" "$SOURCE_COMMIT" --with-browser
+      - name: Verify runtime subpath hosting against the same published app
+        env:
+          SMOKE_PATH_BASE: /mahjong
+          SMOKE_PLAYWRIGHT_OUTPUT_DIR: test-results/mounted
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report/mounted
+        run: bash scripts/smoke-published.sh artifacts/publish "$BUILD_VERSION" "$SOURCE_COMMIT" --with-browser
       - name: Preserve browser evidence and failure logs
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
