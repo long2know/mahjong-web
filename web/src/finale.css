@@ -89,7 +89,7 @@
   .modal:has(.winning-hands) .modal-head { padding-block: 2px; }
   .modal:has(.winning-hands) .modal-content { padding: 6px 10px; }
   .modal-content > .form:has(> .winning-hands) {
-    grid-template-columns: minmax(132px, .28fr) minmax(0, 1fr);
+    grid-template-columns: minmax(min-content, .28fr) minmax(0, 1fr);
     align-items: start;
     gap: 3px 8px;
   }
@@ -110,6 +110,17 @@
   }
   .modal:has(.winning-hands) .scoreboard { font-size: .83rem; line-height: 1.2; }
   .modal:has(.winning-hands) .scoreboard :is(th, td) { padding: 2px 3px; }
+  /* Let scores size their columns; long seat names must not grow their row. */
+  .modal:has(.winning-hands) .scoreboard :is(th, td):not(:first-child) {
+    width: 1%;
+    white-space: nowrap;
+  }
+  .modal:has(.winning-hands) .scoreboard tbody th {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .winning-hands.form { gap: 5px; }
   .modal .winner { padding: 3px 5px; gap: 3px; }
   .modal .winner h3 { font-size: .96rem; overflow-wrap: anywhere; }

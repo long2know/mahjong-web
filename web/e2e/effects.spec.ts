@@ -651,7 +651,10 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
         }
       });
       // Exercise wider host font metrics without depending on installed fonts.
-      await page.addStyleTag({ content: ".modal .winner .meld-caption { letter-spacing: .08em; }" });
+      await page.addStyleTag({ content: `
+        .modal .winner .meld-caption { letter-spacing: .08em; }
+        .modal .scoreboard { letter-spacing: .06em; }
+      ` });
     }
     await expect(page.locator(".seat-actor")).toHaveCount(4);
     await expect(page.locator(".seat-label[data-seat='1'] .tile-back")).toHaveCount(4);
@@ -699,9 +702,10 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
       .toBe(true);
     await page.screenshot({ path: testInfo.outputPath("02-lantern-tableau-374ms.png") });
 
+    const updatedName = width === 740 ? "Jade of the Lantern Hall" : "Jade II";
     wire.publish({ ...won, roomRevision: won.roomRevision + 1,
-      room: { ...won.room, seats: won.room.seats.map(seat => seat.seat === 3 ? { ...seat, displayName: "Jade II" } : seat) } });
-    await expect(page.locator('.seat-label[data-seat="3"] .seat-name')).toHaveText("Jade II");
+      room: { ...won.room, seats: won.room.seats.map(seat => seat.seat === 3 ? { ...seat, displayName: updatedName } : seat) } });
+    await expect(page.locator('.seat-label[data-seat="3"] .seat-name')).toHaveText(updatedName);
     expect(await midpoint(relays.nth(0))).toEqual(docked[0]);
     const results = page.getByRole("dialog", { name: "Hand results" });
     if (width === 740) {
@@ -715,6 +719,7 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
     await expect(results).toBeVisible();
     await expect(results.getByText("Willow and Ink won this hand.")).toBeVisible();
     await expect(results.getByRole("row", { name: "River (you) -16 -16" })).toHaveCount(1);
+    await expect(results.getByRole("rowheader", { name: updatedName, exact: true })).toBeVisible();
     const firstWinner = results.locator(".winner").filter({ hasText: "Willow" });
     const secondWinner = results.locator(".winner").filter({ hasText: "Ink" });
     await expect(firstWinner.getByRole("group", { name: "Concealed tiles" }).getByRole("img")).toHaveCount(7);
@@ -743,10 +748,15 @@ for (const [width, height] of [[1440, 900], [740, 320]] as const) {
         const box = (await button.boundingBox())!;
         expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(44);
       }
+      expect(await results.getByRole("cell").evaluateAll(cells =>
+        cells.every(cell => cell.scrollWidth <= cell.clientWidth))).toBe(true);
+      const point = await midpoint(next);
+      await page.touchscreen.tap(point.x, point.y);
+    } else {
+      await next.focus();
+      await expect(next).toBeFocused();
+      await page.keyboard.press("Enter");
     }
-    await next.focus();
-    await expect(next).toBeFocused();
-    await page.keyboard.press("Enter");
     await expect.poll(() => wire.commands[0]?.op).toBe("nextHand");
   });
 }
