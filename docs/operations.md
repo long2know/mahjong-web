@@ -18,6 +18,14 @@ Use the Compose named volume unless you can guarantee ownership and permissions 
 
 `GET /health/live` checks that HTTP can serve; `GET /health/ready` checks readiness after migrations and recovery and while SQLite is usable. Docker's healthcheck uses readiness. Inspect `/api/version` with the health results, and inspect `docker compose logs mahjong` if readiness doesn't return. Keep HTTP access logs free of credentials, cookies, invite codes, and private message bodies.
 
+## Run the published image
+
+Use the [README Docker command](../README.md#run-the-published-image) with Docker Engine 28 or newer on Linux/amd64 once the `Publish the verified GHCR image` job in [CI](https://github.com/long2know/mahjong-web/actions/workflows/ci.yml) logs a verified `latest` digest for the desired commit. The image is anonymously pullable after verification. The old `Mahjong.Autotable.Api.dll` image isn't this app: start `Mahjong.Server.dll` with a fresh named volume, and leave the legacy volume and backups intact. No JWT is needed; browsers use the app's guest cookie.
+
+To select a known revision, replace `:latest` with `:sha-<full-commit>`, or pin `ghcr.io/long2know/mahjong-web@sha256:<manifest-digest>` from the publish log for exact bytes. Keep `--pull=always`, then check `/health/ready` and `/api/version` at the chosen loopback port (e.g. `curl -fsS http://127.0.0.1:8911/api/version`). The reported revision must match the intended commit. For remote access, use the HTTPS setup below, pass its application settings with `docker run --env`, and set the proxy upstream to the chosen loopback port.
+
+If GHCR denies the job's push, the maintainer of the existing package linked to `long2know/mahjong-webgl` should open its package settings, choose **Manage Actions access**, and add `long2know/mahjong-web` with **Write**. Then rerun the publish job for the current `main` push. The job uses the repository's Actions token; no PAT in the repo is needed.
+
 ## HTTPS for other devices
 
 HTTP is for loopback development only. Terminate TLS at a trusted reverse proxy and keep Kestrel inaccessible to clients except through that proxy. Export `Mahjong__AllowHttpLoopbackOrigin=false`, `Mahjong__PublicOrigin` and, if the proxy peer isn't loopback, `Mahjong__TrustedProxies__0` before creating the Compose service. Docker port forwarding can make a host proxy appear to originate from a bridge address: trust only the actual, expected peer, never a wildcard or all container networks. Keep the upstream inaccessible to untrusted peers. Only one forwarded hop is supported.
@@ -96,6 +104,8 @@ docker compose up -d --no-build --wait
 
 Use the intended clean checkout for each build. Check readiness, version, and a guest reconnect after the update. EF Core applies migrations on startup before readiness. Don't point older application code at a database already migrated by a newer build; roll back the **matching** pre-update image and data backup. `docker image load -i backups/mahjong-rollback-image.tar` loads a saved image locally; an image archive is never a substitute for a data backup.
 
+For a published-image deployment, likewise stop and take an offline data backup, record the old image digest, and remove only the stopped container. Recreate it with the verified new image and the same Lantern Table volume and settings. Restarting an existing container doesn't pick up a new image. Roll back using the saved digest and its matching data backup.
+
 ### Restore and verify
 
 Run `docker compose stop --timeout 30 mahjong` in the original project before reusing its host port or hostname. Restore into a **fresh** volume (new Compose project), with the original volume retained as a fallback. Use an image that matches the saved database; the example uses the loaded rollback tag. Set `backup` to the actual data archive first, and use the same public origin and trusted proxy settings for the restored service.
@@ -163,7 +173,7 @@ BUILD_VERSION="$version" SOURCE_COMMIT="$revision" docker compose build mahjong
 bash scripts/smoke-container.sh mahjong-web:local "$version" "$revision"
 ```
 
-The image smoke prints the image ID and checks labels, non-root execution, a writable named volume, no Node or SDK, and readiness. It verifies the original guest after recreating the container and after archive restore into a separate volume. It uses disposable loopback containers and volumes, not a deployed service. CI builds and tests without publishing or deploying the image.
+The image smoke prints the image ID and checks labels, non-root execution, a writable named volume, no Node or SDK, and readiness. It verifies the original guest after recreating the container and after archive restore into a separate volume. It uses disposable loopback containers and volumes, not a deployed service. Only a push to `main` in the upstream repository can publish, after both CI suites pass and the exact candidate is smoke-tested. Publication verifies public access to the commit-tagged image before moving `latest` to the same manifest; it does not deploy anything.
 
 The base-image digests in the [Dockerfile](../Dockerfile) were checked against the public registries. Update the [.NET SDK pin](../global.json), image references, and CI tools together as required; verify updates against the official [.NET release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json) and [Node release schedule](https://github.com/nodejs/Release#release-schedule).
 When intentionally changing a NuGet reference, regenerate the affected project lock files with `dotnet restore <project> -p:RestoreLockedMode=false --force-evaluate`, then verify in locked mode.
